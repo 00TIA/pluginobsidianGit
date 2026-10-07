@@ -5,7 +5,7 @@ import type { GitController } from '../git-controller';
 import { SETTINGS_PATH } from '../messages';
 import type { StatusBarState } from './status-text';
 
-export const VIEW_TYPE_GIT = 'vault-git-sync-panel';
+export const VIEW_TYPE_GIT = 'mercurio-git-sync-panel';
 
 interface PanelAction {
 	icon: string;

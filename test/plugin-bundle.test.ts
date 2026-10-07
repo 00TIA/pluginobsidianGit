@@ -196,7 +196,7 @@ describe('production bundle', () => {
 				setActiveLeaf: (leaf: FakeLeaf) => (leaf.active = true),
 			},
 		};
-		plugin = new PluginClass(app, { id: 'vault-git-sync', version: '1.0.0' });
+		plugin = new PluginClass(app, { id: 'mercurio-git-sync', version: '1.0.1' });
 		await plugin.onload();
 	});
 
@@ -409,7 +409,7 @@ describe('production bundle', () => {
 		assert.deepEqual(ribbon && [ribbon.icon, ribbon.title], ['git-branch', 'Open Git panel']);
 		ribbon?.callback();
 		await waitFor(() => rightLeaf.active === true, 'the panel to open');
-		assert.equal(rightLeaf.viewState?.type, 'vault-git-sync-panel');
+		assert.equal(rightLeaf.viewState?.type, 'mercurio-git-sync-panel');
 		assert.equal(rightLeaf.expanded, true);
 
 		write(vault, 'notes.md', 'changed notes');
@@ -418,7 +418,7 @@ describe('production bundle', () => {
 		write(vault, 'new note.md', 'new');
 		fs.rmSync(path.join(vault, 'a.md'));
 
-		const view = plugin.views['vault-git-sync-panel']!(rightLeaf);
+		const view = plugin.views['mercurio-git-sync-panel']!(rightLeaf);
 		await view.onOpen();
 		const text = view.contentEl.allText();
 		for (const label of ['Sync', 'Commit', 'Commit with message…', 'Pull', 'Push', 'Refresh', 'Changes']) {
