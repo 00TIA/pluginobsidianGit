@@ -114,7 +114,7 @@ export class VaultGitSettingTab extends PluginSettingTab {
 		guideEl.createEl('p', {
 			cls: 'vault-git-guide-intro',
 			text:
-				'Vault Git Sync keeps the history of your notes with Git and can sync them with an online copy, for example on GitHub. ' +
+				'Mercurio Git Sync keeps the history of your notes with Git and can sync them with an online copy, for example on GitHub. ' +
 				`Follow these steps once: ${done} of ${total} done.`,
 		});
 		SETUP_STEPS.forEach((step, index) => {

@@ -166,7 +166,7 @@ describe('messages', () => {
 			describePush({ kind: 'pushed', commits: null, remote: 'origin', branch: 'main', setUpstream: true }),
 			/"main" published to origin/,
 		);
-		assert.match(describePush({ kind: 'no-remote' }), /set the remote URL in Settings → Vault Git Sync/);
+		assert.match(describePush({ kind: 'no-remote' }), /set the remote URL in Settings → Mercurio Git Sync/);
 		assert.equal(
 			describePush({ kind: 'pushed', commits: 2, remote: 'origin', branch: 'main', setUpstream: false }),
 			'Pushed 2 commits.',
