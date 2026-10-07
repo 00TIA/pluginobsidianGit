@@ -1,10 +1,20 @@
-import { App, ButtonComponent, debounce, moment, PluginSettingTab, Setting, TextComponent } from 'obsidian';
+import { App, ButtonComponent, debounce, moment, Platform, PluginSettingTab, Setting, TextComponent } from 'obsidian';
 import * as os from 'os';
 import { DEFAULT_COMMIT_TEMPLATE, DEFAULT_DATE_FORMAT, renderCommitMessage } from './commit-message';
 import type { Identity } from './git/git-service';
 import type VaultGitPlugin from './main';
 import { DEFAULT_SETTINGS, MIN_AUTO_BACKUP_MINUTES, parseInterval, parseLargeFileLimit } from './settings-data';
-import { parseStepText, SETUP_STEPS, setupCompletion } from './setup-guide';
+import {
+	GuidePlatform,
+	nextStep,
+	parseStepText,
+	SETUP_STEPS,
+	SetupState,
+	SetupStep,
+	SetupStepId,
+	setupCompletion,
+	stepParagraphs,
+} from './setup-guide';
 
 /** Runs `action` when Enter is pressed in a text field. */
 function onEnter(text: TextComponent, action: () => void): void {
@@ -14,6 +24,22 @@ function onEnter(text: TextComponent, action: () => void): void {
 			action();
 		}
 	});
+}
+
+function guidePlatform(): GuidePlatform {
+	if (Platform.isMacOS) return 'macos';
+	return Platform.isWin ? 'windows' : 'linux';
+}
+
+/** Appends a paragraph with **bold**, `code` and [links](https://…). */
+function renderParagraph(container: HTMLElement, text: string): void {
+	const paragraph = container.createEl('p');
+	for (const part of parseStepText(text)) {
+		if (part.style === 'bold') paragraph.createEl('strong', { text: part.text });
+		else if (part.style === 'code') paragraph.createEl('code', { text: part.text });
+		else if (part.style === 'link') paragraph.createEl('a', { text: part.text, href: part.href });
+		else paragraph.appendText(part.text);
+	}
 }
 
 function describeAuthor(identity: Identity | undefined): string {
@@ -30,8 +56,12 @@ export class VaultGitSettingTab extends PluginSettingTab {
 	private gitInfoEl: HTMLElement | null = null;
 	private reloadRepository: (() => Promise<void>) | null = null;
 	private guideEl: HTMLElement | null = null;
-	/** The guide stays open or closed as the user left it while the tab is shown. */
-	private guideOpen: boolean | null = null;
+	/** Steps whose explanation is open; null = only the next step to do. */
+	private guideExpanded: Set<SetupStepId> | null = null;
+	/** Show all the steps even when the setup is complete. */
+	private guideShowAll = false;
+	/** Fields the guide can jump to. */
+	private readonly guideTargets: Partial<Record<SetupStepId, HTMLElement>> = {};
 
 	constructor(
 		app: App,
@@ -43,7 +73,8 @@ export class VaultGitSettingTab extends PluginSettingTab {
 	display(): void {
 		const { containerEl } = this;
 		containerEl.empty();
-		this.guideOpen = null;
+		this.guideExpanded = null;
+		this.guideShowAll = false;
 		this.displayGuide(containerEl);
 		this.displayGit(containerEl);
 		this.displayRepository(containerEl);
@@ -58,38 +89,95 @@ export class VaultGitSettingTab extends PluginSettingTab {
 		this.guideEl.createDiv({ cls: 'setting-item-description', text: 'Checking the setup…' });
 	}
 
-	/** Renders the setup steps, with a check mark on the ones already done. */
+	/** Renders the setup steps: done ones in one line, the next one explained. */
 	private async renderGuide(): Promise<void> {
 		const guideEl = this.guideEl;
 		if (!guideEl) return;
-		const progress = await this.plugin.controller.setupProgress();
-		const { done, total } = setupCompletion(progress);
+		const state = await this.plugin.controller.setupState();
+		const next = nextStep(state);
+		const { done, total } = setupCompletion(state);
+		const expanded = this.guideExpanded ?? new Set(next ? [next] : []);
 		guideEl.empty();
 
-		const details = guideEl.createEl('details');
-		details.open = this.guideOpen ?? done < total;
-		details.addEventListener('toggle', () => (this.guideOpen = details.open));
-		details.createEl('summary', {
-			text: done === total ? 'Setup complete: open to see the steps again' : `Setup: ${done} of ${total} steps done`,
+		if (!next && !this.guideShowAll) {
+			const complete = guideEl.createDiv({ cls: 'vault-git-guide-complete' });
+			complete.createSpan({ cls: 'vault-git-guide-check', text: '✓' });
+			complete.createSpan({ text: 'Everything is set up. Use the Git icon in the left ribbon to sync.' });
+			const show = complete.createEl('button', { cls: 'mod-muted', text: 'Show the steps' });
+			show.addEventListener('click', () => {
+				this.guideShowAll = true;
+				void this.renderGuide();
+			});
+			return;
+		}
+
+		guideEl.createEl('p', {
+			cls: 'vault-git-guide-intro',
+			text:
+				'Vault Git Sync keeps the history of your notes with Git and can sync them with an online copy, for example on GitHub. ' +
+				`Follow these steps once: ${done} of ${total} done.`,
 		});
-		const list = details.createEl('ol');
-		for (const step of SETUP_STEPS) {
-			const isDone = step.done ? progress[step.done] : false;
-			const item = list.createEl('li');
-			item.toggleClass('is-done', isDone);
-			for (const part of parseStepText(step.text)) {
-				if (part.style === 'bold') item.createEl('strong', { text: part.text });
-				else if (part.style === 'code') item.createEl('code', { text: part.text });
-				else item.appendText(part.text);
-			}
-			if (isDone) item.createSpan({ cls: 'vault-git-guide-check', text: ' ✓' });
-			if (step.done === 'repo' && !isDone && progress.git) {
-				const button = item.createEl('button', { cls: 'mod-cta vault-git-guide-button', text: 'Initialize repository' });
-				button.addEventListener('click', () => {
-					button.disabled = true;
-					void this.plugin.controller.initRepository().then(() => this.reloadRepository?.());
+		SETUP_STEPS.forEach((step, index) => {
+			const detail = state[step.id];
+			const card = guideEl.createDiv({ cls: 'vault-git-step' });
+			card.toggleClass('is-done', detail !== null);
+			card.toggleClass('is-next', step.id === next);
+
+			const header = card.createDiv({ cls: 'vault-git-step-header' });
+			header.createSpan({ cls: 'vault-git-step-marker', text: detail !== null ? '✓' : String(index + 1) });
+			const heading = header.createDiv({ cls: 'vault-git-step-heading' });
+			heading.createDiv({ cls: 'vault-git-step-title', text: step.title });
+			heading.createDiv({ cls: 'vault-git-step-where', text: detail ?? step.where });
+			header.addEventListener('click', () => {
+				const open = new Set(expanded);
+				if (open.has(step.id)) open.delete(step.id);
+				else open.add(step.id);
+				this.guideExpanded = open;
+				void this.renderGuide();
+			});
+
+			if (!expanded.has(step.id)) return;
+			const body = card.createDiv({ cls: 'vault-git-step-body' });
+			for (const paragraph of stepParagraphs(step, guidePlatform())) renderParagraph(body, paragraph);
+			this.renderStepActions(body.createDiv({ cls: 'vault-git-step-actions' }), step, state);
+		});
+	}
+
+	private renderStepActions(container: HTMLElement, step: SetupStep, state: SetupState): void {
+		const controller = this.plugin.controller;
+		const addButton = (text: string, run: () => Promise<unknown> | void, cta = true) => {
+			const button = container.createEl('button', { text });
+			if (cta) button.addClass('mod-cta');
+			button.addEventListener('click', () => {
+				button.disabled = true;
+				void Promise.resolve(run()).finally(() => this.reloadRepository?.());
+			});
+		};
+		const jumpTo = (target: HTMLElement | undefined) => {
+			target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+			target?.focus();
+		};
+
+		switch (step.id) {
+			case 'git':
+				if (!state.git) addButton('Check again', () => this.checkGit());
+				break;
+			case 'repo':
+				if (state.git && !state.repo) addButton('Initialize repository', () => controller.initRepository());
+				break;
+			case 'author':
+			case 'remote': {
+				const button = container.createEl('button', {
+					text: step.id === 'author' ? 'Go to Commit author' : 'Go to Remote URL',
 				});
+				button.disabled = !state.repo;
+				button.addEventListener('click', () => jumpTo(this.guideTargets[step.id]));
+				break;
 			}
+			case 'sync':
+				if (state.remote) addButton('Sync now', () => controller.sync());
+				else container.createSpan({ cls: 'vault-git-step-note', text: 'Connect an online copy first (step 4).' });
+				break;
 		}
 	}
 
@@ -165,6 +253,7 @@ export class VaultGitSettingTab extends PluginSettingTab {
 			.addText((text) => {
 				urlText = text.setPlaceholder('git@github.com:user/vault.git');
 				urlText.inputEl.addClass('vault-git-wide-input');
+				this.guideTargets.remote = urlText.inputEl;
 				onEnter(text, () => void saveUrl());
 			})
 			.addButton((button) => {
@@ -175,6 +264,7 @@ export class VaultGitSettingTab extends PluginSettingTab {
 			.setName('Commit author')
 			.addText((text) => {
 				nameText = text.setPlaceholder('Name');
+				this.guideTargets.author = nameText.inputEl;
 				onEnter(text, () => void saveAuthor());
 			})
 			.addText((text) => {

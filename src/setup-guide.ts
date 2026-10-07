@@ -1,59 +1,113 @@
-/** Setup steps shown at the top of the settings tab. No Obsidian imports, so it can be tested. */
+/**
+ * Setup guide shown at the top of the settings tab.
+ * No Obsidian imports, so the content and the logic can be tested.
+ */
 
-export interface SetupProgress {
-	git: boolean;
-	repo: boolean;
-	remote: boolean;
-	author: boolean;
-}
+export type SetupStepId = 'git' | 'repo' | 'author' | 'remote' | 'sync';
+
+/** For each step: a short detail when it is done (e.g. the Git path found), null when not. */
+export type SetupState = Record<SetupStepId, string | null>;
+
+export type GuidePlatform = 'macos' | 'windows' | 'linux';
 
 export interface SetupStep {
-	/** Text with **bold** UI labels and `code`. */
-	text: string;
-	/** Progress flag that marks the step as done; steps without it cannot be checked. */
-	done?: keyof SetupProgress;
+	id: SetupStepId;
+	title: string;
+	/** Where the step is done, shown next to the title. */
+	where: string;
+	/** Paragraphs with **bold** labels, `code` and [links](https://…). */
+	body: string[];
+	/** Extra paragraph for the operating system in use. */
+	byPlatform?: Record<GuidePlatform, string>;
+	/** Paragraph shown after the platform-specific one. */
+	after?: string;
 }
+
+const SSH_GUIDE = 'https://docs.github.com/en/authentication/connecting-to-github-with-ssh';
 
 export const SETUP_STEPS: SetupStep[] = [
 	{
-		done: 'git',
-		text: 'Install Git. **Git in use** below shows the executable the plugin found; if it says not found, install Git or set its path.',
+		id: 'git',
+		title: 'Install Git',
+		where: 'on your computer',
+		body: [
+			'Git is a separate program installed on your computer, not inside Obsidian. The plugin uses it to save the history of your notes and to sync them.',
+		],
+		byPlatform: {
+			macos: 'Open the **Terminal** app (Applications → Utilities), type `xcode-select --install`, press Return and confirm the window that appears. With Homebrew, `brew install git` works too.',
+			windows: 'Download **Git for Windows** from [git-scm.com](https://git-scm.com/download/win) and run the installer, keeping the default options.',
+			linux: 'Install the **git** package with your package manager, e.g. `sudo apt install git` (Debian, Ubuntu) or `sudo dnf install git` (Fedora).',
+		},
+		after: 'When the installation is done, select **Check again**. If Git is installed but not found, set its path in **Path to the Git executable** below.',
 	},
 	{
-		done: 'repo',
-		text: 'Turn the vault into a Git repository with **Initialize repository** (Git panel or command palette).',
+		id: 'repo',
+		title: 'Turn the vault into a Git repository',
+		where: 'here in Obsidian',
+		body: [
+			'This creates a hidden .git folder inside the vault, where the history is kept. Nothing is sent online.',
+		],
 	},
 	{
-		done: 'remote',
-		text: 'Create an empty, private repository on GitHub, GitLab or similar, and copy its address: green **Code** button → **SSH** (or **HTTPS**).',
+		id: 'author',
+		title: 'Tell Git who you are',
+		where: 'here in Obsidian',
+		body: [
+			'Every saved version records its author. Fill in your name and email in **Commit author** below and select **Save**.',
+		],
 	},
 	{
-		done: 'remote',
-		text: 'Paste the address in **Remote URL** below and select **Save**.',
+		id: 'remote',
+		title: 'Connect an online copy',
+		where: 'on GitHub, then here',
+		body: [
+			'Needed to back up the vault online and to sync it between computers. On GitHub (or GitLab), create a new **private** repository and leave it empty: no README, no .gitignore.',
+			'On the repository page select the green **Code** button, choose **SSH** and copy the address (like `git@github.com:name/vault.git`). Paste it in **Remote URL** below and select **Save**.',
+			`The plugin never asks for passwords: your computer needs an SSH key added to your GitHub account ([GitHub guide](${SSH_GUIDE})). To check it, run \`ssh -T git@github.com\` in a terminal: it must answer with your user name.`,
+		],
 	},
 	{
-		done: 'author',
-		text: 'If Git does not know you yet, fill in **Commit author** and select **Save**.',
-	},
-	{
-		text: 'Make sure Git can authenticate without asking anything: an SSH key loaded in ssh-agent (check with `ssh -T git@github.com` in a terminal), or HTTPS credentials already saved by a credential helper.',
-	},
-	{
-		text: 'Select the Git icon in the left ribbon to open the Git panel, and run **Sync**. Optionally turn on **Pull on startup** and **Automatic backup** below.',
+		id: 'sync',
+		title: 'Sync for the first time',
+		where: 'here in Obsidian',
+		body: [
+			'Select **Sync now**: your notes are saved and sent to the online copy. From then on use the Git icon in the left ribbon, which opens the Git panel with all the commands.',
+			'Optionally, turn on **Pull on startup** and **Automatic backup** below to do it without thinking about it.',
+		],
 	},
 ];
 
-export interface TextPart {
-	text: string;
-	style: 'plain' | 'bold' | 'code';
+/** The first step not done yet, or null when the setup is complete. */
+export function nextStep(state: SetupState): SetupStepId | null {
+	return SETUP_STEPS.find((step) => !state[step.id])?.id ?? null;
 }
 
-/** Splits a step text into plain, **bold** and `code` parts. */
+export function setupCompletion(state: SetupState): { done: number; total: number } {
+	return {
+		done: SETUP_STEPS.filter((step) => state[step.id]).length,
+		total: SETUP_STEPS.length,
+	};
+}
+
+/** The paragraphs of a step for the operating system in use. */
+export function stepParagraphs(step: SetupStep, platform: GuidePlatform): string[] {
+	return [...step.body, ...(step.byPlatform ? [step.byPlatform[platform]] : []), ...(step.after ? [step.after] : [])];
+}
+
+export interface TextPart {
+	text: string;
+	style: 'plain' | 'bold' | 'code' | 'link';
+	href?: string;
+}
+
+/** Splits a paragraph into plain text, **bold**, `code` and [links](https://…). */
 export function parseStepText(text: string): TextPart[] {
 	return text
-		.split(/(\*\*[^*]+\*\*|`[^`]+`)/)
+		.split(/(\*\*[^*]+\*\*|`[^`]+`|\[[^\]]+\]\(https:\/\/[^)\s]+\))/)
 		.filter((part) => part.length > 0)
 		.map((part): TextPart => {
+			const link = /^\[([^\]]+)\]\((https:\/\/[^)\s]+)\)$/.exec(part);
+			if (link) return { text: link[1]!, style: 'link', href: link[2]! };
 			if (part.startsWith('**') && part.endsWith('**') && part.length > 4) {
 				return { text: part.slice(2, -2), style: 'bold' };
 			}
@@ -62,13 +116,4 @@ export function parseStepText(text: string): TextPart[] {
 			}
 			return { text: part, style: 'plain' };
 		});
-}
-
-/** Number of checkable steps that are done, out of the checkable ones. */
-export function setupCompletion(progress: SetupProgress): { done: number; total: number } {
-	const checkable = SETUP_STEPS.filter((step) => step.done);
-	return {
-		done: checkable.filter((step) => step.done && progress[step.done]).length,
-		total: checkable.length,
-	};
 }

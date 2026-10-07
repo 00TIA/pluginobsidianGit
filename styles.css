@@ -169,23 +169,16 @@
 
 /* Setup guide (settings tab) */
 
-.vault-git-guide summary {
-	cursor: var(--cursor);
+.vault-git-guide-intro {
 	color: var(--text-muted);
+	margin: 0 0 var(--size-4-3);
 }
 
-.vault-git-guide ol {
-	margin: var(--size-4-2) 0 var(--size-4-4);
-	padding-inline-start: var(--size-4-6);
-}
-
-.vault-git-guide li {
-	margin-bottom: var(--size-4-2);
-	line-height: var(--line-height-normal);
-}
-
-.vault-git-guide li.is-done {
-	color: var(--text-muted);
+.vault-git-guide-complete {
+	display: flex;
+	align-items: center;
+	gap: var(--size-4-2);
+	margin-bottom: var(--size-4-4);
 }
 
 .vault-git-guide-check {
@@ -193,7 +186,76 @@
 	font-weight: var(--font-bold);
 }
 
-.vault-git-guide-button {
-	display: block;
-	margin-top: var(--size-4-1);
+.vault-git-step {
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m);
+	margin-bottom: var(--size-4-2);
+}
+
+.vault-git-step.is-next {
+	border-color: var(--interactive-accent);
+}
+
+.vault-git-step-header {
+	display: flex;
+	align-items: center;
+	gap: var(--size-4-3);
+	padding: var(--size-4-2) var(--size-4-3);
+	cursor: var(--cursor);
+}
+
+.vault-git-step-marker {
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 1.8em;
+	height: 1.8em;
+	border-radius: 50%;
+	background-color: var(--background-modifier-hover);
+	font-weight: var(--font-bold);
+}
+
+.vault-git-step.is-next .vault-git-step-marker {
+	background-color: var(--interactive-accent);
+	color: var(--text-on-accent);
+}
+
+.vault-git-step.is-done .vault-git-step-marker {
+	color: var(--color-green);
+}
+
+.vault-git-step-title {
+	font-weight: var(--font-semibold);
+}
+
+.vault-git-step.is-done .vault-git-step-title {
+	color: var(--text-muted);
+}
+
+.vault-git-step-where {
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+	word-break: break-all;
+}
+
+.vault-git-step-body {
+	padding: 0 var(--size-4-3) var(--size-4-3) calc(1.8em + var(--size-4-6));
+}
+
+.vault-git-step-body p {
+	margin: 0 0 var(--size-4-2);
+	line-height: var(--line-height-normal);
+}
+
+.vault-git-step-actions {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--size-4-2);
+}
+
+.vault-git-step-note {
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
 }

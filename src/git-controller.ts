@@ -32,7 +32,7 @@ import {
 import { CommitMessageModal } from './ui/commit-modal';
 import { choose } from './ui/choice-modal';
 import { NOTICE_LONG, NOTICE_SHORT, NOTICE_STICKY, NoticeAction, showNotice } from './ui/notices';
-import type { SetupProgress } from './setup-guide';
+import type { SetupState } from './setup-guide';
 import type { GitStatusBar } from './ui/status-bar';
 import type { StatusBarState } from './ui/status-text';
 
@@ -498,14 +498,28 @@ export class GitController {
 		}
 	}
 
-	/** Which setup steps are done, for the guide in the settings. */
-	async setupProgress(): Promise<SetupProgress> {
+	/** Which setup steps are done, with a short detail for each, for the guide in the settings. */
+	async setupState(): Promise<SetupState> {
 		const settings = await this.repositorySettings();
+		const identity = settings.identity;
+		let upstream: string | null = null;
+		if (settings.available && this.service) {
+			try {
+				const status = await this.service.status();
+				if (status.upstream) upstream = `${status.branch ?? 'HEAD'} → ${status.upstream}`;
+			} catch {
+				// shown as not synced yet
+			}
+		}
+		const repo = this.service?.repository;
 		return {
-			git: this.location !== null,
-			repo: settings.available,
-			remote: !!settings.remote?.url,
-			author: !!(settings.identity?.name && settings.identity.email),
+			git: this.location
+				? `${this.location.path} (${this.location.version.replace(/^git version /i, '')})`
+				: null,
+			repo: settings.available && repo ? (repo.vaultIsRoot ? 'Repository created in the vault' : `Inside ${repo.root}`) : null,
+			author: identity?.name && identity.email ? `${identity.name} <${identity.email}>` : null,
+			remote: settings.remote?.url ?? null,
+			sync: upstream ? `Synced: ${upstream}` : null,
 		};
 	}
 

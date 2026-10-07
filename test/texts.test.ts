@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { DEFAULT_COMMIT_TEMPLATE, renderCommitMessage } from '../src/commit-message';
 import { changeKind, groupChanges } from '../src/git/changes';
-import { parseStepText, SETUP_STEPS, setupCompletion } from '../src/setup-guide';
+import { nextStep, parseStepText, SETUP_STEPS, setupCompletion, stepParagraphs } from '../src/setup-guide';
 import {
 	conflictNoticeLines,
 	describeCommit,
@@ -66,20 +66,54 @@ describe('changed files', () => {
 });
 
 describe('setup guide', () => {
-	it('splits bold labels and code from plain text', () => {
-		assert.deepEqual(parseStepText('Paste it in **Remote URL** and run `ssh -T git@github.com`.'), [
-			{ text: 'Paste it in ', style: 'plain' },
-			{ text: 'Remote URL', style: 'bold' },
-			{ text: ' and run ', style: 'plain' },
-			{ text: 'ssh -T git@github.com', style: 'code' },
-			{ text: '.', style: 'plain' },
-		]);
+	const none = { git: null, repo: null, author: null, remote: null, sync: null };
+
+	it('lists the steps in order: computer first, then Obsidian, then the online copy', () => {
+		assert.deepEqual(
+			SETUP_STEPS.map((step) => step.id),
+			['git', 'repo', 'author', 'remote', 'sync'],
+		);
+		assert.equal(SETUP_STEPS[0]?.where, 'on your computer');
 	});
 
-	it('counts the steps already done', () => {
-		assert.ok(SETUP_STEPS.length >= 6);
-		assert.deepEqual(setupCompletion({ git: true, repo: true, remote: false, author: false }), { done: 2, total: 5 });
-		assert.deepEqual(setupCompletion({ git: true, repo: true, remote: true, author: true }), { done: 5, total: 5 });
+	it('explains how to install Git on the operating system in use', () => {
+		const git = SETUP_STEPS[0]!;
+		const mac = stepParagraphs(git, 'macos').join(' ');
+		const windows = stepParagraphs(git, 'windows').join(' ');
+		const linux = stepParagraphs(git, 'linux').join(' ');
+		assert.match(mac, /Terminal.*xcode-select --install/);
+		assert.doesNotMatch(mac, /Git for Windows|apt/);
+		assert.match(windows, /Git for Windows.*git-scm\.com/);
+		assert.doesNotMatch(windows, /xcode-select/);
+		assert.match(linux, /sudo apt install git/);
+		for (const text of [mac, windows, linux]) {
+			assert.match(text, /not inside Obsidian/);
+			assert.match(text, /Check again/);
+		}
+	});
+
+	it('splits bold labels, code and links from plain text', () => {
+		assert.deepEqual(parseStepText('Paste it in **Remote URL**, run `ssh -T git@github.com` ([guide](https://docs.github.com/x)).'), [
+			{ text: 'Paste it in ', style: 'plain' },
+			{ text: 'Remote URL', style: 'bold' },
+			{ text: ', run ', style: 'plain' },
+			{ text: 'ssh -T git@github.com', style: 'code' },
+			{ text: ' (', style: 'plain' },
+			{ text: 'guide', style: 'link', href: 'https://docs.github.com/x' },
+			{ text: ').', style: 'plain' },
+		]);
+		// only https links become links
+		assert.deepEqual(parseStepText('[x](javascript:alert(1))'), [{ text: '[x](javascript:alert(1))', style: 'plain' }]);
+	});
+
+	it('finds the next step and counts the steps done', () => {
+		assert.equal(nextStep(none), 'git');
+		const halfway = { ...none, git: '/usr/bin/git (2.43.0)', repo: 'Repository created in the vault' };
+		assert.equal(nextStep(halfway), 'author');
+		assert.deepEqual(setupCompletion(halfway), { done: 2, total: 5 });
+		const complete = { git: 'g', repo: 'r', author: 'a', remote: 'u', sync: 's' };
+		assert.equal(nextStep(complete), null);
+		assert.deepEqual(setupCompletion(complete), { done: 5, total: 5 });
 	});
 });
 
