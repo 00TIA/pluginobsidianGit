@@ -23,3 +23,177 @@
 .vault-git-wide-input {
 	min-width: 260px;
 }
+
+/* Git panel (right sidebar) */
+
+.vault-git-panel {
+	padding: var(--size-4-3);
+}
+
+.vault-git-panel-header {
+	margin-bottom: var(--size-4-3);
+}
+
+.vault-git-panel-branch {
+	display: flex;
+	align-items: center;
+	gap: var(--size-4-1);
+	font-weight: var(--font-semibold);
+	word-break: break-all;
+}
+
+.vault-git-panel-summary,
+.vault-git-panel-footer,
+.vault-git-panel-folder,
+.vault-git-panel-empty {
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+}
+
+.vault-git-panel-running {
+	margin-top: var(--size-4-1);
+	color: var(--text-accent);
+	font-size: var(--font-ui-small);
+}
+
+.vault-git-panel-error {
+	color: var(--text-error);
+}
+
+.vault-git-panel-icon {
+	display: inline-flex;
+	--icon-size: var(--icon-s);
+}
+
+.vault-git-panel-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--size-4-2);
+	margin-bottom: var(--size-4-4);
+}
+
+.vault-git-panel-button {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--size-4-1);
+}
+
+.vault-git-panel-section-title {
+	display: flex;
+	align-items: center;
+	gap: var(--size-4-2);
+	font-weight: var(--font-semibold);
+	margin-bottom: var(--size-4-2);
+}
+
+.vault-git-panel-count {
+	padding: 0 var(--size-4-2);
+	border-radius: var(--radius-l);
+	background-color: var(--background-modifier-hover);
+	font-size: var(--font-ui-smaller);
+}
+
+.vault-git-panel-group-title {
+	margin-top: var(--size-4-3);
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+}
+
+.vault-git-panel-list {
+	list-style: none;
+	margin: var(--size-4-1) 0 0;
+	padding: 0;
+}
+
+.vault-git-panel-file {
+	display: flex;
+	align-items: baseline;
+	gap: var(--size-4-2);
+	padding: var(--size-2-1) var(--size-4-1);
+	border-radius: var(--radius-s);
+	min-width: 0;
+}
+
+.vault-git-panel-file.is-clickable {
+	cursor: var(--cursor);
+}
+
+.vault-git-panel-file.is-clickable:hover {
+	background-color: var(--background-modifier-hover);
+}
+
+.vault-git-panel-badge {
+	flex: none;
+	width: 1.2em;
+	font-family: var(--font-monospace);
+	font-weight: var(--font-bold);
+	text-align: center;
+}
+
+.vault-git-panel-name {
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.vault-git-panel-folder {
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	min-width: 0;
+}
+
+.vault-git-panel-file.is-modified .vault-git-panel-badge {
+	color: var(--color-orange);
+}
+
+.vault-git-panel-file.is-added .vault-git-panel-badge {
+	color: var(--color-green);
+}
+
+.vault-git-panel-file.is-renamed .vault-git-panel-badge {
+	color: var(--color-blue);
+}
+
+.vault-git-panel-file.is-deleted .vault-git-panel-badge,
+.vault-git-panel-file.is-conflicted .vault-git-panel-badge {
+	color: var(--color-red);
+}
+
+.vault-git-panel-file.is-deleted .vault-git-panel-name {
+	text-decoration: line-through;
+	color: var(--text-muted);
+}
+
+/* Setup guide (settings tab) */
+
+.vault-git-guide summary {
+	cursor: var(--cursor);
+	color: var(--text-muted);
+}
+
+.vault-git-guide ol {
+	margin: var(--size-4-2) 0 var(--size-4-4);
+	padding-inline-start: var(--size-4-6);
+}
+
+.vault-git-guide li {
+	margin-bottom: var(--size-4-2);
+	line-height: var(--line-height-normal);
+}
+
+.vault-git-guide li.is-done {
+	color: var(--text-muted);
+}
+
+.vault-git-guide-check {
+	color: var(--color-green);
+	font-weight: var(--font-bold);
+}
+
+.vault-git-guide-button {
+	display: block;
+	margin-top: var(--size-4-1);
+}

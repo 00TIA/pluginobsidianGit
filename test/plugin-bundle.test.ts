@@ -18,12 +18,14 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 const FAKE_OBSIDIAN = String.raw`
 class FakeElement {
-	constructor(tag = 'div') { this.tag = tag; this.text = ''; this.children = []; this.classes = new Set(); this.listeners = {}; }
+	constructor(tag = 'div') { this.tag = tag; this.text = ''; this.children = []; this.classes = new Set(); this.listeners = {}; this.scrollTop = 0; this.disabled = false; }
 	setText(text) { this.text = String(text); }
 	addClass(...names) { names.forEach((n) => this.classes.add(n)); }
 	toggleClass(name, on) { on ? this.classes.add(name) : this.classes.delete(name); }
 	createDiv(options = {}) { return this.createEl('div', options); }
-	createEl(tag, options = {}) { const el = new FakeElement(tag); el.text = options.text ?? ''; this.children.push(el); return el; }
+	createSpan(options = {}) { return this.createEl('span', options); }
+	createEl(tag, options = {}) { const el = new FakeElement(tag); el.text = options.text ?? ''; if (options.cls) el.addClass(...options.cls.split(' ')); this.children.push(el); return el; }
+	appendText(text) { this.createEl('#text', { text }); }
 	addEventListener(type, listener) { this.listeners[type] = listener; }
 	empty() { this.children = []; this.text = ''; }
 	allText() { return [this.text, ...this.children.map((c) => c.allText())].filter(Boolean).join(' '); }
@@ -43,7 +45,10 @@ class Notice {
 Notice.shown = [];
 
 class Plugin {
-	constructor(app, manifest) { this.app = app; this.manifest = manifest; this.commands = []; this.statusBarItems = []; this.intervals = []; this.data = null; }
+	constructor(app, manifest) { this.app = app; this.manifest = manifest; this.commands = []; this.statusBarItems = []; this.intervals = []; this.data = null; this.views = {}; this.ribbon = []; this.events = []; }
+	registerView(type, factory) { this.views[type] = factory; }
+	addRibbonIcon(icon, title, callback) { this.ribbon.push({ icon, title, callback }); return new FakeElement(); }
+	registerEvent(ref) { this.events.push(ref); }
 	addCommand(command) { this.commands.push(command); return command; }
 	addStatusBarItem() { const el = new FakeElement('div'); this.statusBarItems.push(el); return el; }
 	registerDomEvent(el, type, listener) { el.addEventListener(type, listener); }
@@ -54,6 +59,8 @@ class Plugin {
 }
 class PluginSettingTab { constructor(app, plugin) { this.app = app; this.plugin = plugin; this.containerEl = new FakeElement(); } }
 class Modal { constructor(app) { this.app = app; this.contentEl = new FakeElement(); this.titleEl = new FakeElement(); } open() { this.onOpen(); } close() { this.onClose(); } }
+class ItemView { constructor(leaf) { this.leaf = leaf; this.containerEl = new FakeElement(); this.contentEl = new FakeElement(); } }
+const setIcon = (el, icon) => { el.icon = icon; };
 class FileSystemAdapter { constructor(basePath) { this.basePath = basePath; } getBasePath() { return this.basePath; } }
 class TFile {}
 class Menu { addItem(build) { const item = { setTitle: () => item, setIcon: () => item, onClick: () => item }; build(item); return this; } addSeparator() { return this; } showAtMouseEvent() {} }
@@ -77,7 +84,7 @@ const setTooltip = (el, text) => { el.tooltip = text; };
 const debounce = (fn) => fn;
 const moment = () => ({ format: () => '2026-10-07 12:00:00' });
 
-module.exports = { FakeElement, Notice, Plugin, PluginSettingTab, Modal, FileSystemAdapter, TFile, Menu, Setting, setTooltip, debounce, moment };
+module.exports = { FakeElement, Notice, Plugin, PluginSettingTab, Modal, ItemView, FileSystemAdapter, TFile, Menu, Setting, setIcon, setTooltip, debounce, moment };
 `;
 
 interface FakeNotice {
@@ -88,7 +95,22 @@ interface FakeElement {
 	text: string;
 	tooltip?: string;
 }
+interface FakeNode {
+	tag: string;
+	text: string;
+	children: FakeNode[];
+	listeners: Record<string, () => void>;
+	allText(): string;
+}
+interface FakeView {
+	contentEl: FakeNode;
+	onOpen(): Promise<void>;
+	onClose(): Promise<void>;
+}
 interface FakePlugin {
+	views: Record<string, (leaf: unknown) => FakeView>;
+	ribbon: { icon: string; title: string; callback: () => void }[];
+	events: { name: string }[];
 	intervals: number[];
 	commands: { id: string; name: string }[];
 	statusBarItems: FakeElement[];
@@ -120,6 +142,17 @@ describe('production bundle', () => {
 	let plugin: FakePlugin;
 	let notices: FakeNotice[];
 	let buttons: { text: string; click: () => void }[];
+	interface FakeLeaf {
+		viewState?: { type: string };
+		expanded?: boolean;
+		active?: boolean;
+		setViewState(state: { type: string }): Promise<void>;
+	}
+	const rightLeaf: FakeLeaf = {
+		async setViewState(state) {
+			this.viewState = state;
+		},
+	};
 	const originalEnv = { ...process.env };
 	const originalDebug = console.debug;
 
@@ -153,9 +186,14 @@ describe('production bundle', () => {
 				adapter: new obsidian.FileSystemAdapter(vault),
 				configDir: '.obsidian',
 				getAbstractFileByPath: () => null,
+				on: (name: string) => ({ name }),
 			},
 			workspace: {
 				onLayoutReady: (callback: () => void) => (layoutReady = callback),
+				getLeavesOfType: () => [],
+				getRightLeaf: () => rightLeaf,
+				rightSplit: { expand: () => (rightLeaf.expanded = true) },
+				setActiveLeaf: (leaf: FakeLeaf) => (leaf.active = true),
 			},
 		};
 		plugin = new PluginClass(app, { id: 'vault-git-sync', version: '1.0.0' });
@@ -193,7 +231,7 @@ describe('production bundle', () => {
 	it('registers the commands', () => {
 		assert.deepEqual(
 			plugin.commands.map((command) => command.id),
-			['commit', 'commit-with-message', 'pull', 'push', 'sync', 'abort-merge', 'init-repository'],
+			['open-panel', 'commit', 'commit-with-message', 'pull', 'push', 'sync', 'abort-merge', 'init-repository'],
 		);
 	});
 
@@ -351,5 +389,59 @@ describe('production bundle', () => {
 		plugin.settings.gitPath = '';
 		await plugin.controller.setup();
 		assert.equal(statusText(), 'Git: 0 modified files');
+	});
+
+	/** Depth-first list of the nodes matching `test`. */
+	function findAll(node: FakeNode, test: (node: FakeNode) => boolean): FakeNode[] {
+		return [...(test(node) ? [node] : []), ...node.children.flatMap((child) => findAll(child, test))];
+	}
+
+	async function waitFor(condition: () => boolean, what: string): Promise<void> {
+		for (let attempt = 0; attempt < 300; attempt++) {
+			if (condition()) return;
+			await new Promise((resolve) => setTimeout(resolve, 20));
+		}
+		throw new Error(`Timed out waiting for ${what}`);
+	}
+
+	it('opens the Git panel from the ribbon, lists the changes in order and runs the commands', async () => {
+		const ribbon = plugin.ribbon[0];
+		assert.deepEqual(ribbon && [ribbon.icon, ribbon.title], ['git-branch', 'Open Git panel']);
+		ribbon?.callback();
+		await waitFor(() => rightLeaf.active === true, 'the panel to open');
+		assert.equal(rightLeaf.viewState?.type, 'vault-git-sync-panel');
+		assert.equal(rightLeaf.expanded, true);
+
+		write(vault, 'notes.md', 'changed notes');
+		write(vault, 'folder/zeta.md', 'z');
+		write(vault, 'folder/Alpha.md', 'a');
+		write(vault, 'new note.md', 'new');
+		fs.rmSync(path.join(vault, 'a.md'));
+
+		const view = plugin.views['vault-git-sync-panel']!(rightLeaf);
+		await view.onOpen();
+		const text = view.contentEl.allText();
+		for (const label of ['Sync', 'Commit', 'Commit with message…', 'Pull', 'Push', 'Refresh', 'Changes']) {
+			assert.ok(text.includes(label), `panel shows "${label}"`);
+		}
+		const groups = findAll(view.contentEl, (node) => node.text.includes(' · ') && node.tag === 'div').map((node) => node.text);
+		assert.deepEqual(groups, ['Modified · 1', 'New · 3', 'Deleted · 1']);
+		const files = findAll(view.contentEl, (node) => node.tag === 'li').map((node) => node.allText());
+		assert.deepEqual(files, ['M notes.md', 'A Alpha.md folder', 'A zeta.md folder', 'A new note.md', 'D a.md']);
+
+		const commit = findAll(view.contentEl, (node) => node.tag === 'button' && node.allText() === 'Commit')[0];
+		commit?.listeners.click?.();
+		await waitFor(() => lastNotice() === 'Committed 5 files.', 'the commit from the panel');
+		await waitFor(() => view.contentEl.allText().includes('No changes: everything is committed.'), 'the panel to refresh');
+		assert.match(view.contentEl.allText(), /↑1 to push/);
+		await view.onClose();
+	});
+
+	it('refreshes the status when files change, once the layout is ready', () => {
+		layoutReady?.();
+		assert.deepEqual(
+			plugin.events.map((event) => event.name),
+			['create', 'modify', 'delete', 'rename'],
+		);
 	});
 });

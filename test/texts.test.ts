@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { DEFAULT_COMMIT_TEMPLATE, renderCommitMessage } from '../src/commit-message';
+import { changeKind, groupChanges } from '../src/git/changes';
+import { parseStepText, SETUP_STEPS, setupCompletion } from '../src/setup-guide';
 import {
 	conflictNoticeLines,
 	describeCommit,
@@ -27,6 +29,57 @@ describe('renderCommitMessage', () => {
 	it('keeps unknown placeholders and falls back to the default template', () => {
 		assert.equal(renderCommitMessage('{{foo}} {{date}}', values), '{{foo}} 2026-10-07 14:30:00');
 		assert.equal(renderCommitMessage('   ', values), DEFAULT_COMMIT_TEMPLATE.replace('{{date}}', values.date));
+	});
+});
+
+describe('changed files', () => {
+	it('maps git status codes to kinds of change', () => {
+		assert.equal(changeKind(' ', 'M'), 'modified');
+		assert.equal(changeKind('M', 'M'), 'modified');
+		assert.equal(changeKind('?', '?'), 'added');
+		assert.equal(changeKind('A', ' '), 'added');
+		assert.equal(changeKind(' ', 'D'), 'deleted');
+		assert.equal(changeKind('R', ' '), 'renamed');
+		assert.equal(changeKind('U', 'U'), 'conflicted');
+		assert.equal(changeKind('A', 'A'), 'conflicted');
+	});
+
+	it('groups changes (conflicts first) and sorts them naturally', () => {
+		const groups = groupChanges([
+			{ path: 'b/note 10.md', kind: 'modified' },
+			{ path: 'b/note 2.md', kind: 'modified' },
+			{ path: 'old.md', kind: 'deleted' },
+			{ path: 'Zeta.md', kind: 'added' },
+			{ path: 'alpha.md', kind: 'added' },
+			{ path: 'clash.md', kind: 'conflicted' },
+		]);
+		assert.deepEqual(
+			groups.map((group) => [group.title, group.letter, group.files.map((file) => file.path)]),
+			[
+				['Conflicts', 'U', ['clash.md']],
+				['Modified', 'M', ['b/note 2.md', 'b/note 10.md']],
+				['New', 'A', ['alpha.md', 'Zeta.md']],
+				['Deleted', 'D', ['old.md']],
+			],
+		);
+	});
+});
+
+describe('setup guide', () => {
+	it('splits bold labels and code from plain text', () => {
+		assert.deepEqual(parseStepText('Paste it in **Remote URL** and run `ssh -T git@github.com`.'), [
+			{ text: 'Paste it in ', style: 'plain' },
+			{ text: 'Remote URL', style: 'bold' },
+			{ text: ' and run ', style: 'plain' },
+			{ text: 'ssh -T git@github.com', style: 'code' },
+			{ text: '.', style: 'plain' },
+		]);
+	});
+
+	it('counts the steps already done', () => {
+		assert.ok(SETUP_STEPS.length >= 6);
+		assert.deepEqual(setupCompletion({ git: true, repo: true, remote: false, author: false }), { done: 2, total: 5 });
+		assert.deepEqual(setupCompletion({ git: true, repo: true, remote: true, author: true }), { done: 5, total: 5 });
 	});
 });
 
@@ -119,6 +172,7 @@ describe('status bar text', () => {
 		ahead: 0,
 		behind: 0,
 		changedFiles: 3,
+		files: [],
 		conflicted: [],
 		merging: false,
 	};

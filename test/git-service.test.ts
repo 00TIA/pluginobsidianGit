@@ -161,6 +161,15 @@ describe('commit', () => {
 
 		const status = await service.status();
 		assert.equal(status.changedFiles, 4);
+		assert.deepEqual(
+			status.files.map((file) => [file.path, file.kind]).sort(),
+			[
+				['.gitignore', 'deleted'],
+				['folder/deep.md', 'added'],
+				['new.md', 'added'],
+				['note.md', 'modified'],
+			],
+		);
 
 		const outcome = await service.commit((files) => `backup (${files} file)`);
 		assert.deepEqual(outcome, { kind: 'committed', files: 4, message: 'backup (4 file)' });

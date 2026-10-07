@@ -1,8 +1,14 @@
 import type VaultGitPlugin from './main';
+import { openGitPanel } from './ui/git-view';
 
 export function registerCommands(plugin: VaultGitPlugin): void {
 	const controller = () => plugin.controller;
 
+	plugin.addCommand({
+		id: 'open-panel',
+		name: 'Open Git panel',
+		callback: () => void openGitPanel(plugin.app.workspace),
+	});
 	plugin.addCommand({
 		id: 'commit',
 		name: 'Commit',

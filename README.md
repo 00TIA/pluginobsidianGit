@@ -3,6 +3,7 @@
 An Obsidian **desktop** plugin (Windows, macOS, Linux) that keeps your vault under Git, built on [simple-git](https://github.com/steveukx/git-js).
 
 - Commands: **Commit**, **Commit with custom message…**, **Pull**, **Push**, **Sync** (commit + pull + push), **Abort merge** and **Initialize repository**.
+- A **Git panel** in the right sidebar (ribbon icon on the left): all the commands as buttons and the list of modified files, grouped and sorted.
 - A **status bar** item with the number of modified files, refreshed every 30 seconds and after every operation (plus `↑n` / `↓n` for commits to push / pull). Click it for a menu with the commands.
 - **Remote URL and commit author** can be set from the plugin settings: no terminal needed.
 - Optional **pull on startup** and **automatic backup** every N minutes.
@@ -27,11 +28,23 @@ Copy `main.js`, `manifest.json` and `styles.css` to `<vault>/.obsidian/plugins/v
 
 ## Getting started
 
+The settings tab starts with the same steps as a checklist that ticks itself as you complete them.
+
 1. If the vault is not a Git repository, the plugin shows a notice with an **Initialize repository** button (also available as a command). It runs `git init` (branch `main` unless you configured `init.defaultBranch`) and creates:
    - a `.gitignore` for Obsidian (workspace layout files, `.trash/`, OS files);
    - a `.gitattributes` with `* text=auto eol=lf`: Obsidian writes LF line endings on every OS, so notes keep LF in the repository and in the vault, also on Windows with `core.autocrlf=true`.
 2. In **Settings → Vault Git Sync → Repository**, set the **Remote URL** (copy the SSH or HTTPS address from GitHub/GitLab/…) and, if Git does not know you yet, the **Commit author**.
 3. Run **Sync**. The first push sets the upstream branch.
+
+## Git panel
+
+Select the Git icon in the left ribbon (or run **Open Git panel**) to open the panel in the right sidebar:
+
+- branch and upstream, number of modified files, commits to push / pull;
+- buttons for **Sync**, **Commit**, **Commit with message…**, **Pull**, **Push**, **Abort merge** (only during a merge) and **Refresh**, or **Initialize repository** when the vault is not a repository yet;
+- the modified files grouped as **Conflicts**, **Modified**, **New**, **Renamed**, **Deleted**, sorted by path; select a file to open it (Cmd/Ctrl-click opens it in a new tab).
+
+The panel and the status bar refresh every 30 seconds, after every operation, and 2 seconds after files change in the vault.
 
 ## Commands
 

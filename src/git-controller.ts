@@ -32,7 +32,9 @@ import {
 import { CommitMessageModal } from './ui/commit-modal';
 import { choose } from './ui/choice-modal';
 import { NOTICE_LONG, NOTICE_SHORT, NOTICE_STICKY, NoticeAction, showNotice } from './ui/notices';
+import type { SetupProgress } from './setup-guide';
 import type { GitStatusBar } from './ui/status-bar';
+import type { StatusBarState } from './ui/status-text';
 
 type ControllerState = 'checking' | 'no-git' | 'not-repo' | 'ready' | 'error';
 
@@ -71,6 +73,9 @@ export class GitController {
 	private refreshPromise: Promise<void> | null = null;
 	private running: string | null = null;
 	private lastStatus: RepoStatus | null = null;
+	/** Last state shown (never `busy`), for the Git panel. */
+	private lastState: StatusBarState = { kind: 'checking' };
+	private readonly listeners = new Set<() => void>();
 	/** Situation last reported by the automatic backup, to avoid repeating it at every run. */
 	private lastAutoNotice: string | null = null;
 	/** Large files last reported by the automatic backup (separate from errors and conflicts). */
@@ -178,22 +183,60 @@ export class GitController {
 		};
 	}
 
-	// ----- status bar ---------------------------------------------------------
+	// ----- status bar and Git panel ---------------------------------------------
+
+	/** Renders the status bar and notifies the Git panel. */
+	private show(state: StatusBarState): void {
+		if (state.kind !== 'busy') this.lastState = state;
+		this.statusBar.render(state);
+		for (const listener of this.listeners) listener();
+	}
+
+	/** Subscribes to state changes (used by the Git panel); returns the unsubscribe function. */
+	onChange(listener: () => void): () => void {
+		this.listeners.add(listener);
+		return () => {
+			this.listeners.delete(listener);
+		};
+	}
+
+	/** Last repository state, plus the operation running now (if any). */
+	snapshot(): { state: StatusBarState; running: string | null } {
+		return { state: this.lastState, running: this.running };
+	}
+
+	/** Vault-relative path of a file reported by Git (relative to the repository root). */
+	vaultPathOf(repoPath: string): string | null {
+		const repo = this.service?.repository;
+		const vaultPath = this.vaultPath();
+		if (!repo || !vaultPath) return null;
+		const relative = path.relative(vaultPath, path.join(repo.root, repoPath));
+		return relative.startsWith('..') ? null : relative.split(path.sep).join('/');
+	}
+
+	/** Opens a file reported by Git in the editor; false when it is not in the vault. */
+	openFile(repoPath: string, newTab = false): boolean {
+		const vaultPath = this.vaultPathOf(repoPath);
+		const target = vaultPath ? this.app.vault.getAbstractFileByPath(vaultPath) : null;
+		if (!(target instanceof TFile)) return false;
+		void this.app.workspace.getLeaf(newTab ? 'tab' : false).openFile(target);
+		return true;
+	}
 
 	private renderState(): void {
 		if (this.running) return;
 		switch (this.state) {
 			case 'checking':
-				this.statusBar.render({ kind: 'checking' });
+				this.show({ kind: 'checking' });
 				break;
 			case 'no-git':
-				this.statusBar.render({ kind: 'no-git' });
+				this.show({ kind: 'no-git' });
 				break;
 			case 'not-repo':
-				this.statusBar.render({ kind: 'not-repo' });
+				this.show({ kind: 'not-repo' });
 				break;
 			case 'error':
-				this.statusBar.render({ kind: 'error', message: this.stateMessage });
+				this.show({ kind: 'error', message: this.stateMessage });
 				break;
 			case 'ready':
 				break;
@@ -217,7 +260,7 @@ export class GitController {
 			const status = await this.service.status();
 			if (this.running) return;
 			this.lastStatus = status;
-			this.statusBar.render({ kind: 'ready', status, updatedAt: new Date() });
+			this.show({ kind: 'ready', status, updatedAt: new Date() });
 		} catch (error) {
 			if (this.running) return;
 			this.lastStatus = null;
@@ -227,7 +270,7 @@ export class GitController {
 				this.renderState();
 				return;
 			}
-			this.statusBar.render({ kind: 'error', message: this.errorLines(error).join(' ') });
+			this.show({ kind: 'error', message: this.errorLines(error).join(' ') });
 		}
 	}
 
@@ -455,6 +498,17 @@ export class GitController {
 		}
 	}
 
+	/** Which setup steps are done, for the guide in the settings. */
+	async setupProgress(): Promise<SetupProgress> {
+		const settings = await this.repositorySettings();
+		return {
+			git: this.location !== null,
+			repo: settings.available,
+			remote: !!settings.remote?.url,
+			author: !!(settings.identity?.name && settings.identity.email),
+		};
+	}
+
 	async setRemoteUrl(url: string): Promise<boolean> {
 		if (!isValidRemoteUrl(url)) {
 			showNotice('Enter a remote URL, e.g. git@github.com:user/vault.git or https://github.com/user/vault.git.');
@@ -545,7 +599,7 @@ export class GitController {
 		if (this.notifyIfBusy(mode)) return false;
 
 		this.running = label;
-		this.statusBar.render({ kind: 'busy', label });
+		this.show({ kind: 'busy', label });
 		try {
 			await task(service);
 			return true;
@@ -649,22 +703,10 @@ export class GitController {
 	}
 
 	private openFileActions(files: string[]): NoticeAction[] {
-		const repo = this.service?.repository;
-		const vaultPath = this.vaultPath();
-		if (!repo || !vaultPath) return [];
 		return files.slice(0, 3).flatMap((file) => {
-			const vaultRelative = path
-				.relative(vaultPath, path.join(repo.root, file))
-				.split(path.sep)
-				.join('/');
-			const target = this.app.vault.getAbstractFileByPath(vaultRelative);
-			if (!(target instanceof TFile)) return [];
-			return [
-				{
-					label: `Open ${target.name}`,
-					run: () => void this.app.workspace.getLeaf('tab').openFile(target),
-				},
-			];
+			const vaultPath = this.vaultPathOf(file);
+			if (!vaultPath || !(this.app.vault.getAbstractFileByPath(vaultPath) instanceof TFile)) return [];
+			return [{ label: `Open ${path.posix.basename(vaultPath)}`, run: () => void this.openFile(file, true) }];
 		});
 	}
 

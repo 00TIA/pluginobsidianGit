@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { simpleGit, SimpleGit } from 'simple-git';
+import { ChangedFile, changeKind } from './changes';
 import { classifyGitError, errorText } from './errors';
 import { BATCH_SSH_COMMAND, buildGitEnv, hasUserSshCommand, NON_INTERACTIVE_CONFIG } from './git-env';
 
@@ -38,6 +39,8 @@ export interface RepoStatus {
 	behind: number;
 	/** Changed, added, deleted and untracked files inside the vault. */
 	changedFiles: number;
+	/** The same files, with the kind of change. */
+	files: ChangedFile[];
 	conflicted: string[];
 	/** A merge is in progress (MERGE_HEAD exists). */
 	merging: boolean;
@@ -383,6 +386,11 @@ export class GitService {
 			ahead: result.ahead,
 			behind: result.behind,
 			changedFiles: result.files.length,
+			files: result.files.map((file) => ({
+				path: file.path,
+				kind: result.conflicted.includes(file.path) ? 'conflicted' : changeKind(file.index, file.working_dir),
+				...(file.from ? { from: file.from } : {}),
+			})),
 			conflicted: result.conflicted,
 			merging: fs.existsSync(path.join(repo.gitDir, 'MERGE_HEAD')),
 		};

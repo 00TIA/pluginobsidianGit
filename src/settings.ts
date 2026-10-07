@@ -4,6 +4,7 @@ import { DEFAULT_COMMIT_TEMPLATE, DEFAULT_DATE_FORMAT, renderCommitMessage } fro
 import type { Identity } from './git/git-service';
 import type VaultGitPlugin from './main';
 import { DEFAULT_SETTINGS, MIN_AUTO_BACKUP_MINUTES, parseInterval, parseLargeFileLimit } from './settings-data';
+import { parseStepText, SETUP_STEPS, setupCompletion } from './setup-guide';
 
 /** Runs `action` when Enter is pressed in a text field. */
 function onEnter(text: TextComponent, action: () => void): void {
@@ -28,6 +29,9 @@ export class VaultGitSettingTab extends PluginSettingTab {
 	private readonly relocateGit = debounce(() => void this.checkGit(), 800, true);
 	private gitInfoEl: HTMLElement | null = null;
 	private reloadRepository: (() => Promise<void>) | null = null;
+	private guideEl: HTMLElement | null = null;
+	/** The guide stays open or closed as the user left it while the tab is shown. */
+	private guideOpen: boolean | null = null;
 
 	constructor(
 		app: App,
@@ -39,11 +43,54 @@ export class VaultGitSettingTab extends PluginSettingTab {
 	display(): void {
 		const { containerEl } = this;
 		containerEl.empty();
+		this.guideOpen = null;
+		this.displayGuide(containerEl);
 		this.displayGit(containerEl);
 		this.displayRepository(containerEl);
 		this.displayCommitMessage(containerEl);
 		this.displayLargeFiles(containerEl);
 		this.displayAutomation(containerEl);
+	}
+
+	private displayGuide(containerEl: HTMLElement): void {
+		new Setting(containerEl).setName('Getting started').setHeading();
+		this.guideEl = containerEl.createDiv({ cls: 'vault-git-guide' });
+		this.guideEl.createDiv({ cls: 'setting-item-description', text: 'Checking the setup…' });
+	}
+
+	/** Renders the setup steps, with a check mark on the ones already done. */
+	private async renderGuide(): Promise<void> {
+		const guideEl = this.guideEl;
+		if (!guideEl) return;
+		const progress = await this.plugin.controller.setupProgress();
+		const { done, total } = setupCompletion(progress);
+		guideEl.empty();
+
+		const details = guideEl.createEl('details');
+		details.open = this.guideOpen ?? done < total;
+		details.addEventListener('toggle', () => (this.guideOpen = details.open));
+		details.createEl('summary', {
+			text: done === total ? 'Setup complete: open to see the steps again' : `Setup: ${done} of ${total} steps done`,
+		});
+		const list = details.createEl('ol');
+		for (const step of SETUP_STEPS) {
+			const isDone = step.done ? progress[step.done] : false;
+			const item = list.createEl('li');
+			item.toggleClass('is-done', isDone);
+			for (const part of parseStepText(step.text)) {
+				if (part.style === 'bold') item.createEl('strong', { text: part.text });
+				else if (part.style === 'code') item.createEl('code', { text: part.text });
+				else item.appendText(part.text);
+			}
+			if (isDone) item.createSpan({ cls: 'vault-git-guide-check', text: ' ✓' });
+			if (step.done === 'repo' && !isDone && progress.git) {
+				const button = item.createEl('button', { cls: 'mod-cta vault-git-guide-button', text: 'Initialize repository' });
+				button.addEventListener('click', () => {
+					button.disabled = true;
+					void this.plugin.controller.initRepository().then(() => this.reloadRepository?.());
+				});
+			}
+		}
 	}
 
 	private displayGit(containerEl: HTMLElement): void {
@@ -139,6 +186,14 @@ export class VaultGitSettingTab extends PluginSettingTab {
 			});
 
 		const load = async () => {
+			try {
+				await fill();
+			} finally {
+				// the guide shows which steps are done
+				await this.renderGuide();
+			}
+		};
+		const fill = async () => {
 			setEnabled(false);
 			const settings = await controller.repositorySettings();
 			unavailable.settingEl.toggle(!settings.available);
