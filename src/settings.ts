@@ -3,7 +3,7 @@ import * as os from 'os';
 import { DEFAULT_COMMIT_TEMPLATE, DEFAULT_DATE_FORMAT, renderCommitMessage } from './commit-message';
 import type { Identity } from './git/git-service';
 import type VaultGitPlugin from './main';
-import { DEFAULT_SETTINGS, MIN_AUTO_BACKUP_MINUTES, parseInterval } from './settings-data';
+import { DEFAULT_SETTINGS, MIN_AUTO_BACKUP_MINUTES, parseInterval, parseLargeFileLimit } from './settings-data';
 
 /** Runs `action` when Enter is pressed in a text field. */
 function onEnter(text: TextComponent, action: () => void): void {
@@ -42,6 +42,7 @@ export class VaultGitSettingTab extends PluginSettingTab {
 		this.displayGit(containerEl);
 		this.displayRepository(containerEl);
 		this.displayCommitMessage(containerEl);
+		this.displayLargeFiles(containerEl);
 		this.displayAutomation(containerEl);
 	}
 
@@ -219,6 +220,30 @@ export class VaultGitSettingTab extends PluginSettingTab {
 		// keep the preview below the two fields it depends on
 		containerEl.appendChild(preview.settingEl);
 		updatePreview();
+	}
+
+	private displayLargeFiles(containerEl: HTMLElement): void {
+		new Setting(containerEl).setName('Large files').setHeading();
+
+		const description =
+			'Files of at least this size not tracked by Git LFS need a confirmation before a commit, ' +
+			'and the automatic backup leaves them out. 0 turns the check off.';
+		const limit = new Setting(containerEl).setName('Size limit in megabytes').setDesc(description);
+		limit.addText((text) => {
+			text.inputEl.type = 'number';
+			text.inputEl.min = '0';
+			text
+				.setPlaceholder(String(DEFAULT_SETTINGS.largeFileLimitMb))
+				.setValue(String(this.plugin.settings.largeFileLimitMb))
+				.onChange(async (value) => {
+					const megabytes = parseLargeFileLimit(value);
+					limit.descEl.toggleClass('mod-warning', megabytes === null);
+					limit.setDesc(megabytes === null ? `Enter a whole number of MB. ${description}` : description);
+					if (megabytes === null) return;
+					this.plugin.settings.largeFileLimitMb = megabytes;
+					await this.plugin.saveSettings();
+				});
+		});
 	}
 
 	private displayAutomation(containerEl: HTMLElement): void {

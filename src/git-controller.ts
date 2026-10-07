@@ -8,6 +8,7 @@ import {
 	GitService,
 	Identity,
 	isValidRemoteUrl,
+	LargeFile,
 	PullOutcome,
 	RemoteInfo,
 	RepoStatus,
@@ -22,12 +23,14 @@ import {
 	describePull,
 	describePush,
 	errorMessage,
+	fileList,
+	largeFilesLines,
 	SETTINGS_PATH,
 	shouldShowDetail,
 	unresolvedConflictsText,
 } from './messages';
 import { CommitMessageModal } from './ui/commit-modal';
-import { ConfirmModal } from './ui/confirm-modal';
+import { choose } from './ui/choice-modal';
 import { NOTICE_LONG, NOTICE_SHORT, NOTICE_STICKY, NoticeAction, showNotice } from './ui/notices';
 import type { GitStatusBar } from './ui/status-bar';
 
@@ -70,6 +73,8 @@ export class GitController {
 	private lastStatus: RepoStatus | null = null;
 	/** Situation last reported by the automatic backup, to avoid repeating it at every run. */
 	private lastAutoNotice: string | null = null;
+	/** Large files last reported by the automatic backup (separate from errors and conflicts). */
+	private lastLargeFilesNotice: string | null = null;
 
 	constructor(
 		private readonly plugin: VaultGitPlugin,
@@ -265,25 +270,65 @@ export class GitController {
 	}
 
 	async commit(): Promise<void> {
+		const exclude = await this.confirmLargeFiles();
+		if (!exclude) return;
 		await this.run('commit', 'manual', async (service) => {
-			const outcome = await service.commit((n) => this.commitMessage(n), { concludeMerge: true });
-			this.notifyCommit(outcome);
+			const outcome = await service.commit((n) => this.commitMessage(n), { concludeMerge: true, exclude });
+			this.notifyCommit(outcome, exclude);
 		});
 	}
 
 	async commitWithMessage(): Promise<void> {
+		const exclude = await this.confirmLargeFiles();
+		if (!exclude) return;
 		const status = await this.currentStatus();
 		if (!status) return;
-		if (!status.changedFiles && !status.merging) {
+		const files = Math.max(0, status.changedFiles - exclude.length);
+		if (!files && !status.merging) {
 			showNotice('Nothing to commit.');
 			return;
 		}
-		new CommitMessageModal(this.app, this.commitMessage(status.changedFiles), status.changedFiles, (message) => {
+		new CommitMessageModal(this.app, this.commitMessage(files), files, (message) => {
 			void this.run('commit', 'manual', async (service) => {
-				const outcome = await service.commit(message, { concludeMerge: true });
-				this.notifyCommit(outcome);
+				const outcome = await service.commit(message, { concludeMerge: true, exclude });
+				this.notifyCommit(outcome, exclude);
 			});
 		}).open();
+	}
+
+	private largeFileLimitBytes(): number {
+		return this.plugin.settings.largeFileLimitMb * 1024 * 1024;
+	}
+
+	/**
+	 * Before a manual commit: asks what to do with large files not tracked by Git LFS.
+	 * Returns the files to leave out, or null when the user cancelled (or Git is not ready).
+	 */
+	private async confirmLargeFiles(): Promise<string[] | null> {
+		const limit = this.largeFileLimitBytes();
+		if (!limit) return [];
+		if (this.notifyIfBusy('manual')) return null;
+		const service = await this.readyService('manual', true);
+		if (!service) return null;
+		let large: LargeFile[];
+		try {
+			large = await service.largeFiles(limit);
+		} catch (error) {
+			this.reportError(error, 'manual');
+			return null;
+		}
+		if (!large.length) return [];
+		const choice = await choose(this.app, {
+			title: 'Large files',
+			lines: largeFilesLines(large, this.plugin.settings.largeFileLimitMb),
+			choices: [
+				{ text: 'Commit anyway', value: 'all' as const, style: 'warning' },
+				{ text: 'Commit without them', value: 'exclude' as const, style: 'cta' },
+			],
+		});
+		if (choice === 'all') return [];
+		if (choice === 'exclude') return large.map((file) => file.path);
+		return null;
 	}
 
 	async pull(): Promise<void> {
@@ -300,9 +345,11 @@ export class GitController {
 	}
 
 	async sync(): Promise<void> {
+		const exclude = await this.confirmLargeFiles();
+		if (!exclude) return;
 		await this.run('sync', 'manual', async (service) => {
-			const outcome = await service.sync((n) => this.commitMessage(n), { concludeMerge: true });
-			this.notifySync(outcome, 'manual');
+			const outcome = await service.sync((n) => this.commitMessage(n), { concludeMerge: true, exclude });
+			this.notifySync(outcome, 'manual', exclude);
 		});
 	}
 
@@ -314,38 +361,38 @@ export class GitController {
 			showNotice('No merge in progress.');
 			return;
 		}
-		new ConfirmModal(
-			this.app,
-			{
-				title: 'Abort merge',
-				lines: [
-					'The vault goes back to the state before the pull: changes made while resolving the conflicts are lost.',
-					'Your commits are kept; the remote changes will be merged again at the next pull or sync.',
-				],
-				confirmText: 'Abort merge',
-				warning: true,
-			},
-			() => {
-				void this.run('abort merge', 'manual', async (service) => {
-					const outcome = await service.abortMerge();
-					showNotice(
-						outcome.kind === 'aborted'
-							? 'Merge aborted: the vault is back to the state before the pull.'
-							: 'No merge in progress.',
-					);
-				});
-			},
-		).open();
+		const confirmed = await choose(this.app, {
+			title: 'Abort merge',
+			lines: [
+				'The vault goes back to the state before the pull: changes made while resolving the conflicts are lost.',
+				'Your commits are kept; the remote changes will be merged again at the next pull or sync.',
+			],
+			choices: [{ text: 'Abort merge', value: true, style: 'warning' }],
+		});
+		if (!confirmed) return;
+		await this.run('abort merge', 'manual', async (service) => {
+			const outcome = await service.abortMerge();
+			showNotice(
+				outcome.kind === 'aborted'
+					? 'Merge aborted: the vault is back to the state before the pull.'
+					: 'No merge in progress.',
+			);
+		});
 	}
 
 	/** Called by the automatic backup timer. */
 	async autoBackup(): Promise<void> {
 		await this.run('backup', 'auto', async (service) => {
 			const message = (n: number) => this.commitMessage(n);
+			// nobody can confirm: large files not tracked by Git LFS are left out
+			const limit = this.largeFileLimitBytes();
+			const large = limit ? await service.largeFiles(limit) : [];
+			this.notifyLargeFilesLeftOut(large);
+			const exclude = large.map((file) => file.path);
 			if (this.plugin.settings.autoBackupSync) {
-				this.notifySync(await service.sync(message), 'auto');
+				this.notifySync(await service.sync(message, { exclude }), 'auto');
 			} else {
-				const outcome = await service.commit(message);
+				const outcome = await service.commit(message, { exclude });
 				if (outcome.kind === 'merge-in-progress' || outcome.kind === 'unresolved-conflicts') {
 					this.notifyAutoPaused(outcome.files);
 				} else {
@@ -578,9 +625,27 @@ export class GitController {
 		});
 	}
 
-	private notifyCommit(outcome: CommitOutcome): void {
+	private notifyCommit(outcome: CommitOutcome, excluded: string[] = []): void {
 		const problem = outcome.kind === 'unresolved-conflicts' || outcome.kind === 'merge-in-progress';
-		showNotice(describeCommit(outcome), { duration: problem ? NOTICE_LONG : NOTICE_SHORT });
+		showNotice([describeCommit(outcome), ...leftOutLines(excluded)], {
+			duration: problem ? NOTICE_LONG : NOTICE_SHORT,
+		});
+	}
+
+	/** Automatic backup: reports the large files it left out, once per set of files. */
+	private notifyLargeFilesLeftOut(large: LargeFile[]): void {
+		const key = large.map((file) => file.path).join('\n') || null;
+		if (key === this.lastLargeFilesNotice) return;
+		this.lastLargeFilesNotice = key;
+		if (!large.length) return;
+		showNotice(
+			[
+				'Automatic backup: large files left out.',
+				...largeFilesLines(large, this.plugin.settings.largeFileLimitMb),
+				'They are committed only when you confirm it from "Commit" or "Sync".',
+			],
+			{ duration: NOTICE_LONG },
+		);
 	}
 
 	private openFileActions(files: string[]): NoticeAction[] {
@@ -627,7 +692,7 @@ export class GitController {
 		showNotice(describePull(outcome), { duration: ok ? NOTICE_SHORT : NOTICE_LONG });
 	}
 
-	private notifySync(outcome: SyncOutcome, mode: Mode): void {
+	private notifySync(outcome: SyncOutcome, mode: Mode, excluded: string[] = []): void {
 		const { commit, pull, push } = outcome;
 		if (commit.kind === 'merge-in-progress' || commit.kind === 'unresolved-conflicts') {
 			if (mode === 'auto') this.notifyAutoPaused(commit.files);
@@ -649,7 +714,7 @@ export class GitController {
 			return;
 		}
 
-		const lines = [describeCommit(commit)];
+		const lines = [describeCommit(commit), ...leftOutLines(excluded)];
 		if (pull) lines.push(describePull(pull));
 		if (push) lines.push(describePush(push));
 		const ok =
@@ -659,4 +724,8 @@ export class GitController {
 			duration: ok ? NOTICE_SHORT : NOTICE_LONG,
 		});
 	}
+}
+
+function leftOutLines(excluded: string[]): string[] {
+	return excluded.length ? [`Left out: ${fileList(excluded)}.`] : [];
 }

@@ -52,6 +52,7 @@ Copy `main.js`, `manifest.json` and `styles.css` to `<vault>/.obsidian/plugins/v
   - **Remote URL** – URL of the remote used by pull/push (`origin`, or the remote of the current upstream branch). Adds `origin` if there is no remote yet.
   - **Commit author** – name and email saved in this repository's config only (`git config --local`); your global Git configuration is never modified. Leave empty to use the global values, which are shown as hints.
 - **Commit message** – format with the placeholders `{{date}}`, `{{hostname}}`, `{{numFiles}}` (default `vault backup: {{date}}`), date format in [Moment.js](https://momentjs.com/docs/#/displaying/format/) syntax (default `YYYY-MM-DD HH:mm:ss`) and a preview.
+- **Large files** – **Size limit in megabytes** (default 50, 0 turns the check off). See *Large files and Git LFS*.
 - **Automation**
   - **Pull on startup** – pulls when Obsidian starts. Quiet when there is nothing new; notices for pulled files, conflicts and errors.
   - **Automatic backup**, **Interval in minutes** (at least 1) and **Include pull and push** – the backup is a full sync, or a local commit only. It is quiet: it reports only errors and conflicts, once, without repeating the same notice at every run.
@@ -100,7 +101,14 @@ Note: Git cannot put markers in binary files (images, PDFs); the local version s
 
 ## Large files and Git LFS
 
-Git LFS is **not** applied automatically by file size: it stores in LFS only the files matching the patterns in `.gitattributes`. To use it:
+Before a commit, the plugin looks for new or modified files of at least the size limit (50 MB by default) that Git LFS does not handle:
+
+- **Commit**, **Commit with custom message…** and **Sync** show the list with their sizes and ask: **Commit without them** (the files stay in the vault, uncommitted), **Commit anyway** or **Cancel**;
+- the **automatic backup** cannot ask, so it commits everything else and leaves those files out, with a notice shown once (not at every run) until the list changes.
+
+Once committed, a file stays in the history for good (removing it means rewriting history), and GitHub rejects files over 100 MB. Files tracked by Git LFS are never reported.
+
+Git LFS itself is **not** applied automatically by file size: it stores in LFS only the files matching the patterns in `.gitattributes`. To use it:
 
 ```bash
 git lfs install                       # once per computer (e.g. after brew install git-lfs)

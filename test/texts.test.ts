@@ -8,8 +8,10 @@ import {
 	describePush,
 	errorMessage,
 	fileList,
+	formatSize,
+	largeFilesLines,
 } from '../src/messages';
-import { DEFAULT_SETTINGS, normalizeSettings, parseInterval } from '../src/settings-data';
+import { DEFAULT_SETTINGS, normalizeSettings, parseInterval, parseLargeFileLimit } from '../src/settings-data';
 import { describeStatusBar } from '../src/ui/status-text';
 
 const values = { date: '2026-10-07 14:30:00', hostname: 'laptop', numFiles: 3 };
@@ -41,6 +43,11 @@ describe('settings', () => {
 	it('normalises saved data', () => {
 		assert.deepEqual(normalizeSettings(null), DEFAULT_SETTINGS);
 		assert.equal(normalizeSettings({ pullOnStartup: true }).pullOnStartup, true);
+		assert.equal(normalizeSettings({ largeFileLimitMb: 0 }).largeFileLimitMb, 0);
+		assert.equal(normalizeSettings({ largeFileLimitMb: -5 }).largeFileLimitMb, 50);
+		assert.equal(parseLargeFileLimit('100'), 100);
+		assert.equal(parseLargeFileLimit('0'), 0);
+		assert.equal(parseLargeFileLimit('1.5'), null);
 		assert.deepEqual(
 			normalizeSettings({
 				gitPath: ' /opt/homebrew/bin/git ',
@@ -85,6 +92,16 @@ describe('messages', () => {
 		assert.match(text, /no automatic resolution/);
 		assert.match(text, /nothing was pushed/);
 		assert.match(text, /Abort merge/);
+	});
+
+	it('describes large files with their size', () => {
+		assert.equal(formatSize(230 * 1024 * 1024), '230 MB');
+		assert.equal(formatSize(1.5 * 1024 * 1024), '1.5 MB');
+		assert.equal(formatSize(3 * 1024 * 1024 * 1024), '3.0 GB');
+		const [first, second] = largeFilesLines([{ path: 'video.mp4', size: 230 * 1024 * 1024 }], 50);
+		assert.equal(first, 'This file is larger than 50 MB and not tracked by Git LFS: video.mp4 (230 MB).');
+		assert.match(second ?? '', /Git LFS/);
+		assert.match(second ?? '', /100 MB/);
 	});
 
 	it('mentions SSH and the credential helper on authentication errors', () => {

@@ -57,7 +57,22 @@ class Modal { constructor(app) { this.app = app; this.contentEl = new FakeElemen
 class FileSystemAdapter { constructor(basePath) { this.basePath = basePath; } getBasePath() { return this.basePath; } }
 class TFile {}
 class Menu { addItem(build) { const item = { setTitle: () => item, setIcon: () => item, onClick: () => item }; build(item); return this; } addSeparator() { return this; } showAtMouseEvent() {} }
-class Setting {}
+class Setting {
+	constructor(containerEl) { this.containerEl = containerEl; }
+	addButton(build) {
+		const button = {
+			text: '',
+			buttonEl: new FakeElement('button'),
+			setButtonText(text) { this.text = text; return this; },
+			onClick(handler) { this.click = handler; return this; },
+			setCta() { return this; },
+		};
+		build(button);
+		Setting.buttons.push(button);
+		return this;
+	}
+}
+Setting.buttons = [];
 const setTooltip = (el, text) => { el.tooltip = text; };
 const debounce = (fn) => fn;
 const moment = () => ({ format: () => '2026-10-07 12:00:00' });
@@ -77,12 +92,13 @@ interface FakePlugin {
 	intervals: number[];
 	commands: { id: string; name: string }[];
 	statusBarItems: FakeElement[];
-	settings: { gitPath: string; pullOnStartup: boolean };
+	settings: { gitPath: string; pullOnStartup: boolean; largeFileLimitMb: number };
 	controller: {
 		start(): Promise<void>;
 		setup(): Promise<void>;
 		initRepository(): Promise<void>;
 		commit(): Promise<void>;
+		sync(): Promise<void>;
 		push(): Promise<void>;
 		autoBackup(): Promise<void>;
 		repositorySettings(): Promise<{
@@ -103,6 +119,7 @@ describe('production bundle', () => {
 	let layoutReady: (() => void) | null = null;
 	let plugin: FakePlugin;
 	let notices: FakeNotice[];
+	let buttons: { text: string; click: () => void }[];
 	const originalEnv = { ...process.env };
 	const originalDebug = console.debug;
 
@@ -125,9 +142,11 @@ describe('production bundle', () => {
 		const requireFromPlugin = createRequire(path.join(pluginDir, 'main.js'));
 		const obsidian = requireFromPlugin('obsidian') as {
 			Notice: { shown: FakeNotice[] };
+			Setting: { buttons: { text: string; click: () => void }[] };
 			FileSystemAdapter: new (base: string) => unknown;
 		};
 		notices = obsidian.Notice.shown;
+		buttons = obsidian.Setting.buttons;
 		const PluginClass = (requireFromPlugin('./main.js') as { default: new (app: unknown, manifest: unknown) => FakePlugin }).default;
 		const app = {
 			vault: {
@@ -155,6 +174,20 @@ describe('production bundle', () => {
 	});
 
 	const statusText = () => plugin.statusBarItems[0]?.text;
+
+	/** Clicks a dialog button as soon as the dialog shows it. */
+	async function click(text: string): Promise<void> {
+		for (let attempt = 0; attempt < 200; attempt++) {
+			const button = buttons.find((candidate) => candidate.text === text);
+			if (button) {
+				buttons.length = 0; // the dialog closes
+				button.click();
+				return;
+			}
+			await new Promise((resolve) => setTimeout(resolve, 10));
+		}
+		throw new Error(`No "${text}" button`);
+	}
 	const lastNotice = () => notices[notices.length - 1]?.message ?? '';
 
 	it('registers the commands', () => {
@@ -262,6 +295,51 @@ describe('production bundle', () => {
 		assert.equal(lastNotice(), 'Pull on startup Pulled: 1 file updated.');
 		assert.ok(fs.existsSync(path.join(vault, 'from-other-device.md')));
 		plugin.settings.pullOnStartup = false;
+	});
+
+	it('asks before committing large files and leaves them out of automatic backups', async () => {
+		plugin.settings.largeFileLimitMb = 1;
+		try {
+			fs.writeFileSync(path.join(vault, 'video.mp4'), Buffer.alloc(2 * 1024 * 1024));
+			write(vault, 'notes.md', 'notes');
+
+			// manual commit: the user leaves the large file out
+			let pending = plugin.controller.commit();
+			await click('Commit without them');
+			await pending;
+			assert.equal(lastNotice(), 'Committed 1 file. Left out: video.mp4.');
+			assert.equal(git(vault, process.env, 'ls-files', 'video.mp4'), '');
+			// the large file is still modified; the new commit is not pushed yet
+			assert.equal(statusText(), 'Git: 1 modified file ↑1');
+
+			// cancel: nothing happens
+			const before = git(vault, process.env, 'rev-parse', 'HEAD');
+			pending = plugin.controller.commit();
+			await click('Cancel');
+			await pending;
+			assert.equal(git(vault, process.env, 'rev-parse', 'HEAD'), before);
+
+			// automatic backup: left out and reported once
+			const count = notices.length;
+			write(vault, 'auto-large-1.md', 'one');
+			await plugin.controller.autoBackup();
+			assert.equal(notices.length, count + 1);
+			assert.match(lastNotice(), /Automatic backup: large files left out\..*video\.mp4 \(2\.0 MB\)/);
+			write(vault, 'auto-large-2.md', 'two');
+			await plugin.controller.autoBackup();
+			assert.equal(notices.length, count + 1, 'the same large file is not reported again');
+			assert.equal(git(vault, process.env, 'ls-files', 'video.mp4'), '');
+			assert.equal(git(vault, process.env, 'log', '-1', '--format=%s'), 'vault backup: 2026-10-07 12:00:00');
+
+			// sync, committing it anyway
+			pending = plugin.controller.sync();
+			await click('Commit anyway');
+			await pending;
+			assert.match(lastNotice(), /^Sync complete\. Committed 1 file\./);
+			assert.equal(git(vault, process.env, 'ls-files', 'video.mp4'), 'video.mp4');
+		} finally {
+			plugin.settings.largeFileLimitMb = 50;
+		}
 	});
 
 	it('reports a git path that does not work', async () => {

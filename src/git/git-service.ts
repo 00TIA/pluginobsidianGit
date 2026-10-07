@@ -109,6 +109,14 @@ export interface CommitOptions {
 	 * Automatic backups never do it.
 	 */
 	concludeMerge?: boolean;
+	/** Files to leave out of the commit (paths relative to the repository root). */
+	exclude?: string[];
+}
+
+export interface LargeFile {
+	/** Path relative to the repository root. */
+	path: string;
+	size: number;
 }
 
 interface RemoteTarget {
@@ -419,19 +427,65 @@ export class GitService {
 			const unresolved = await this.filesWithConflictMarkers(status.conflicted);
 			if (unresolved.length) return { kind: 'unresolved-conflicts', files: unresolved };
 		}
-		if (!status.changedFiles && !status.merging) return { kind: 'nothing-to-commit' };
+		const excluded = options.exclude ?? [];
+		const files = Math.max(0, status.changedFiles - excluded.length);
+		if (!files && !status.merging) return { kind: 'nothing-to-commit' };
 
 		const git = this.client();
-		await git.raw(['add', '--all', '--', '.']);
-		const text = typeof message === 'function' ? message(status.changedFiles) : message;
+		// `top` = relative to the repository root, `literal` = no wildcards in file names
+		const exclusions = excluded.map((file) => `:(top,exclude,literal)${file}`);
+		await git.raw(['add', '--all', '--', '.', ...exclusions]);
+		const text = typeof message === 'function' ? message(files) : message;
 		const before = await this.head();
 		const args = ['commit', '-m', text];
 		// In a parent repository commit only the vault (not possible while merging).
-		if (!repo.vaultIsRoot && !status.merging) args.push('--', '.');
+		if (!repo.vaultIsRoot && !status.merging) args.push('--', '.', ...exclusions);
 		await git.raw(args);
 		const after = await this.head();
 		if (after === before) return { kind: 'nothing-to-commit' };
-		return { kind: 'committed', files: status.changedFiles, message: text };
+		return { kind: 'committed', files, message: text };
+	}
+
+	/**
+	 * Changed or new files inside the vault of at least `minBytes` that Git LFS does not
+	 * handle: committing them would put them in the history for good.
+	 */
+	async largeFiles(minBytes: number): Promise<LargeFile[]> {
+		const repo = await this.requireRepo();
+		const result = await this.client().status(['--', '.']);
+		const candidates: LargeFile[] = [];
+		for (const file of result.files) {
+			if (file.working_dir === 'D') continue;
+			try {
+				const stat = await fs.promises.stat(path.join(repo.root, file.path));
+				if (stat.isFile() && stat.size >= minBytes) candidates.push({ path: file.path, size: stat.size });
+			} catch {
+				// deleted meanwhile
+			}
+		}
+		if (!candidates.length) return [];
+		const lfs = await this.lfsTracked(candidates.map((file) => file.path));
+		return candidates.filter((file) => !lfs.has(file.path));
+	}
+
+	/** Paths (relative to the repository root) whose `filter` attribute is `lfs`. */
+	private async lfsTracked(files: string[]): Promise<Set<string>> {
+		const repo = await this.requireRepo();
+		// check-attr takes paths relative to the working directory (the vault)
+		const byVaultPath = new Map(
+			files.map((file) => [
+				path.relative(this.options.vaultPath, path.join(repo.root, file)).split(path.sep).join('/'),
+				file,
+			]),
+		);
+		const output = await this.client().raw(['check-attr', '-z', 'filter', '--', ...byVaultPath.keys()]);
+		const tokens = output.split('\0');
+		const tracked = new Set<string>();
+		for (let i = 0; i + 2 < tokens.length; i += 3) {
+			const original = byVaultPath.get(tokens[i]!);
+			if (original && tokens[i + 2] === 'lfs') tracked.add(original);
+		}
+		return tracked;
 	}
 
 	private async remoteTarget(branch: string): Promise<RemoteTarget | null> {

@@ -188,6 +188,52 @@ describe('commit', () => {
 	});
 });
 
+describe('large files', () => {
+	const MB = 1024 * 1024;
+
+	it('finds new or modified files above the limit that Git LFS does not handle', async () => {
+		const f = fixture();
+		const { vault, service } = await publishedVault(f);
+		write(vault, '.gitattributes', '*.psd filter=lfs diff=lfs merge=lfs -text\n');
+		fs.writeFileSync(path.join(vault, 'video.mp4'), Buffer.alloc(2 * MB));
+		fs.writeFileSync(path.join(vault, 'small.png'), Buffer.alloc(MB / 2));
+		fs.writeFileSync(path.join(vault, 'design.psd'), Buffer.alloc(3 * MB));
+		write(vault, 'note.md', 'changed');
+
+		assert.deepEqual(await service.largeFiles(MB), [{ path: 'video.mp4', size: 2 * MB }]);
+		assert.deepEqual(await service.largeFiles(5 * MB), []);
+	});
+
+	it('leaves the excluded files out of the commit', async () => {
+		const f = fixture();
+		const { vault, service } = await publishedVault(f);
+		fs.writeFileSync(path.join(vault, 'clip [1].mp4'), Buffer.alloc(2 * MB));
+		write(vault, 'note.md', 'changed');
+
+		const outcome = await service.commit((n) => `${n} file`, { exclude: ['clip [1].mp4'] });
+		assert.deepEqual(outcome, { kind: 'committed', files: 1, message: '1 file' });
+		assert.equal(git(vault, f.env, 'ls-files', 'clip [1].mp4'), '');
+		assert.equal((await service.status()).changedFiles, 1);
+		// only large files left: nothing to commit
+		assert.deepEqual(await service.commit('again', { exclude: ['clip [1].mp4'] }), { kind: 'nothing-to-commit' });
+	});
+
+	it('excludes files when the vault is a sub-folder of a larger repository', async () => {
+		const f = fixture();
+		const repoRoot = path.join(f.root, 'project');
+		fs.mkdirSync(repoRoot);
+		git(repoRoot, f.env, 'init');
+		write(repoRoot, 'notes/inside.md', 'inside');
+		fs.writeFileSync(path.join(repoRoot, 'notes', 'big.bin'), Buffer.alloc(2 * MB));
+		const service = f.service(path.join(repoRoot, 'notes'));
+
+		const large = await service.largeFiles(MB);
+		assert.deepEqual(large, [{ path: 'notes/big.bin', size: 2 * MB }]);
+		assert.equal((await service.commit('vault', { exclude: large.map((file) => file.path) })).kind, 'committed');
+		assert.equal(git(repoRoot, f.env, 'ls-files'), 'notes/inside.md');
+	});
+});
+
 describe('pull and push', () => {
 	it('reports a missing remote', async () => {
 		const f = fixture();

@@ -1,5 +1,5 @@
 import type { GitErrorKind } from './git/errors';
-import type { CommitOutcome, PullOutcome, PushOutcome } from './git/git-service';
+import type { CommitOutcome, LargeFile, PullOutcome, PushOutcome } from './git/git-service';
 
 /** User-facing texts. No Obsidian imports, so they can be unit-tested. */
 
@@ -59,6 +59,20 @@ export function fileList(files: string[], max = 5): string {
 
 export function filesText(count: number): string {
 	return count === 1 ? '1 file' : `${count} files`;
+}
+
+export function formatSize(bytes: number): string {
+	const mb = bytes / (1024 * 1024);
+	if (mb >= 1024) return `${(mb / 1024).toFixed(1)} GB`;
+	return mb >= 10 ? `${Math.round(mb)} MB` : `${mb.toFixed(1)} MB`;
+}
+
+export function largeFilesLines(files: LargeFile[], limitMb: number): string[] {
+	const list = fileList(files.map((file) => `${file.path} (${formatSize(file.size)})`));
+	return [
+		`${files.length === 1 ? 'This file is' : 'These files are'} larger than ${limitMb} MB and not tracked by Git LFS: ${list}.`,
+		'Once committed, a file stays in the repository history for good, and GitHub rejects files over 100 MB. Track large files with Git LFS, or add them to .gitignore.',
+	];
 }
 
 export const NO_REMOTE_TEXT = `No remote configured: set the remote URL in ${SETTINGS_PATH}.`;

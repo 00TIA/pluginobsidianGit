@@ -14,6 +14,8 @@ export interface VaultGitSettings {
 	autoBackupInterval: number;
 	/** Automatic backup = commit + pull + push (otherwise local commit only). */
 	autoBackupSync: boolean;
+	/** Files of at least this many MB not tracked by Git LFS need confirmation; 0 = no check. */
+	largeFileLimitMb: number;
 }
 
 export const DEFAULT_SETTINGS: VaultGitSettings = {
@@ -24,6 +26,7 @@ export const DEFAULT_SETTINGS: VaultGitSettings = {
 	autoBackup: false,
 	autoBackupInterval: 10,
 	autoBackupSync: true,
+	largeFileLimitMb: 50,
 };
 
 export const MIN_AUTO_BACKUP_MINUTES = 1;
@@ -33,6 +36,12 @@ export function parseInterval(value: string): number | null {
 	if (!/^\s*\d+\s*$/.test(value)) return null;
 	const minutes = Number.parseInt(value, 10);
 	return minutes >= MIN_AUTO_BACKUP_MINUTES ? minutes : null;
+}
+
+/** Parses the large file limit; 0 turns the check off. Null when invalid. */
+export function parseLargeFileLimit(value: string): number | null {
+	if (!/^\s*\d+\s*$/.test(value)) return null;
+	return Number.parseInt(value, 10);
 }
 
 /** Merges saved data with the defaults, discarding invalid values. */
@@ -53,5 +62,9 @@ export function normalizeSettings(saved: unknown): VaultGitSettings {
 		autoBackup: flag(raw.autoBackup, DEFAULT_SETTINGS.autoBackup),
 		autoBackupInterval: interval ?? DEFAULT_SETTINGS.autoBackupInterval,
 		autoBackupSync: flag(raw.autoBackupSync, DEFAULT_SETTINGS.autoBackupSync),
+		largeFileLimitMb:
+			typeof raw.largeFileLimitMb === 'number' && Number.isInteger(raw.largeFileLimitMb) && raw.largeFileLimitMb >= 0
+				? raw.largeFileLimitMb
+				: DEFAULT_SETTINGS.largeFileLimitMb,
 	};
 }
