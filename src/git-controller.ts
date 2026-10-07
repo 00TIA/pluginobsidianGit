@@ -126,7 +126,7 @@ export class GitController {
 			this.location = await locateGit({ configuredPath: this.plugin.settings.gitPath });
 			this.locateError = null;
 		} catch (error) {
-			if (!(error instanceof GitNotFoundError)) console.error('[vault-git-sync] git lookup failed', error);
+			if (!(error instanceof GitNotFoundError)) console.error('[mercurio-git-sync] git lookup failed', error);
 			this.location = null;
 			this.service = null;
 			this.locateError =
@@ -145,7 +145,7 @@ export class GitController {
 			const repo = await this.service.detectRepository();
 			this.state = repo ? 'ready' : 'not-repo';
 		} catch (error) {
-			console.error('[vault-git-sync] repository detection failed', error);
+			console.error('[mercurio-git-sync] repository detection failed', error);
 			this.state = 'error';
 			this.stateMessage = this.errorLines(error).join(' ');
 		}
@@ -619,8 +619,8 @@ export class GitController {
 			return true;
 		} catch (error) {
 			// expected failures (auth, network, …) are explained in a notice
-			if (classifyGitError(error) === 'unknown') console.error(`[vault-git-sync] ${label} failed`, error);
-			else console.debug(`[vault-git-sync] ${label} failed`, error);
+			if (classifyGitError(error) === 'unknown') console.error(`[mercurio-git-sync] ${label} failed`, error);
+			else console.debug(`[mercurio-git-sync] ${label} failed`, error);
 			this.reportError(error, mode);
 			return false;
 		} finally {

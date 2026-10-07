@@ -1,7 +1,7 @@
 {
-	"id": "vault-git-sync",
+	"id": "mercurio-git-sync",
 	"name": "Vault Git Sync",
-	"version": "1.0.0",
+	"version": "1.0.1",
 	"minAppVersion": "1.4.4",
 	"description": "Commit, pull, push and sync your vault with Git, without ever being asked for credentials. Side panel with the changed files, guided setup, automatic backups and warnings for large files.",
 	"author": "mercuriosolutions",

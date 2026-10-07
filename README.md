@@ -21,7 +21,7 @@ The plugin is desktop-only (`isDesktopOnly: true`).
 
 - **From Obsidian** (once the plugin is listed): **Settings → Community plugins → Browse**, search for *Vault Git Sync*, then **Install** and **Enable**.
 - **Before it is listed**, with the [BRAT](https://github.com/TfTHacker/obsidian42-brat) plugin: **Add beta plugin** → `00TIA/pluginobsidianGit`.
-- **Manually**: download `main.js`, `manifest.json` and `styles.css` from the latest [release](https://github.com/00TIA/pluginobsidianGit/releases) into `<vault>/.obsidian/plugins/vault-git-sync/`, restart Obsidian and enable the plugin in **Settings → Community plugins**.
+- **Manually**: download `main.js`, `manifest.json` and `styles.css` from the latest [release](https://github.com/00TIA/pluginobsidianGit/releases) into `<vault>/.obsidian/plugins/mercurio-git-sync/`, restart Obsidian and enable the plugin in **Settings → Community plugins**.
 
 To build it from the source code instead:
 

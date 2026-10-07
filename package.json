@@ -1,6 +1,6 @@
 {
-	"name": "vault-git-sync",
-	"version": "1.0.0",
+	"name": "mercurio-git-sync",
+	"version": "1.0.1",
 	"description": "Obsidian desktop plugin: commit, pull, push and sync the vault with git (via simple-git).",
 	"main": "main.js",
 	"type": "module",
