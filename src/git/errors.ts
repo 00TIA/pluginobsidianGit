@@ -52,6 +52,8 @@ const RULES: Rule[] = [
 			/permission denied, please try again/i,
 			/could not read (username|password)/i,
 			/terminal prompts disabled/i,
+			// git >= 2.46 with credential.interactive=false
+			/unable to get (username|password|credentials?) from user/i,
 			/authentication failed/i,
 			/http basic: access denied/i,
 			/invalid username or password/i,

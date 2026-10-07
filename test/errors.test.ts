@@ -27,6 +27,7 @@ const SAMPLES: [GitErrorKind, string][] = [
 		'git@github.com: Permission denied (publickey).\nfatal: Could not read from remote repository.\n\nPlease make sure you have the correct access rights',
 	],
 	['auth', "fatal: could not read Username for 'https://github.com': terminal prompts disabled"],
+	['auth', 'fatal: unable to get password from user'],
 	["auth", "remote: Invalid username or password.\nfatal: Authentication failed for 'https://github.com/me/vault.git/'"],
 	['auth', "remote: HTTP Basic: Access denied\nfatal: Authentication failed for 'https://gitlab.com/me/vault.git/'"],
 	[
