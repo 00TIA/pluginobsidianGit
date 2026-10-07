@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as http from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -75,6 +76,7 @@ describe('repository detection and init', () => {
 		const gitignore = read(vault, '.gitignore');
 		assert.match(gitignore, /^\.config-dir\/workspace\.json$/m);
 		assert.match(gitignore, /^\.trash\/$/m);
+		assert.match(read(vault, '.gitattributes'), /^\* text=auto$/m);
 		assert.equal((await service.status()).branch, 'main');
 	});
 
@@ -84,6 +86,67 @@ describe('repository detection and init', () => {
 		write(vault, '.gitignore', 'private/\n');
 		await f.service(vault).init(CONFIG_DIR);
 		assert.equal(read(vault, '.gitignore'), 'private/\n');
+	});
+});
+
+describe('remote and author settings', () => {
+	it('adds the origin remote, then changes its URL', async () => {
+		const f = fixture();
+		const vault = path.join(f.root, 'vault');
+		fs.mkdirSync(vault);
+		const service = f.service(vault);
+		await service.init(CONFIG_DIR);
+		assert.equal(await service.remote(), null);
+
+		assert.deepEqual(await service.setRemoteUrl(` ${f.remote} `), { name: 'origin', added: true });
+		assert.deepEqual(await service.remote(), { name: 'origin', url: f.remote });
+
+		const other = path.join(f.root, 'other.git');
+		assert.deepEqual(await service.setRemoteUrl(other), { name: 'origin', added: false });
+		assert.equal(git(vault, f.env, 'remote', 'get-url', 'origin'), other);
+
+		await assert.rejects(service.setRemoteUrl('   '));
+		await assert.rejects(service.setRemoteUrl('--upload-pack=touch /tmp/x'));
+	});
+
+	it('uses the remote of the upstream branch when it is not called origin', async () => {
+		const f = fixture();
+		const { vault, service } = await publishedVault(f);
+		git(vault, f.env, 'remote', 'rename', 'origin', 'github');
+		assert.deepEqual(await service.remote(), { name: 'github', url: f.remote });
+	});
+
+	it('sets the author in the repository only, and falls back to the global one', async () => {
+		const f = fixture();
+		const vault = path.join(f.root, 'vault');
+		fs.mkdirSync(vault);
+		const service = f.service(vault);
+		await service.init(CONFIG_DIR);
+		const globalConfig = read(path.join(f.root, 'home'), '.gitconfig');
+
+		assert.deepEqual(await service.identity(), {
+			name: 'Test User',
+			email: 'test@example.com',
+			localName: null,
+			localEmail: null,
+		});
+
+		await service.setIdentity({ name: ' Vault Owner ', email: 'owner@example.com' });
+		assert.deepEqual(await service.identity(), {
+			name: 'Vault Owner',
+			email: 'owner@example.com',
+			localName: 'Vault Owner',
+			localEmail: 'owner@example.com',
+		});
+		write(vault, 'a.md', 'a');
+		await service.commit('authored');
+		assert.equal(git(vault, f.env, 'log', '-1', '--format=%an <%ae>'), 'Vault Owner <owner@example.com>');
+
+		await service.setIdentity({ name: '', email: '' });
+		assert.equal((await service.identity()).name, 'Test User');
+		// unsetting twice is not an error
+		await service.setIdentity({ name: '' });
+		assert.equal(read(path.join(f.root, 'home'), '.gitconfig'), globalConfig);
 	});
 });
 
@@ -264,6 +327,26 @@ describe('conflicts', () => {
 		);
 	});
 
+	it('aborts the merge left by a conflicting pull, keeping the local commit', async () => {
+		const f = fixture();
+		const { vault, service } = await publishedVault(f);
+		const other = f.clone('other');
+		write(other, 'note.md', 'remote version\n');
+		git(other, f.env, 'commit', '-am', 'other');
+		git(other, f.env, 'push');
+
+		write(vault, 'note.md', 'local version\n');
+		assert.equal((await service.sync('mine')).pull?.kind, 'conflicts');
+		assert.deepEqual(await service.abortMerge(), { kind: 'aborted' });
+
+		const status = await service.status();
+		assert.equal(status.merging, false);
+		assert.deepEqual(status.conflicted, []);
+		assert.equal(read(vault, 'note.md'), 'local version\n');
+		assert.equal(git(vault, f.env, 'log', '-1', '--format=%s'), 'mine');
+		assert.deepEqual(await service.abortMerge(), { kind: 'no-merge' });
+	});
+
 	it('detects conflict markers only at the start of a line', () => {
 		assert.equal(hasConflictMarkers('<<<<<<< HEAD\na\n=======\nb\n>>>>>>> origin/main\n'), true);
 		assert.equal(hasConflictMarkers('Title\n=======\ntext with <<<<<<< inside'), false);
@@ -368,5 +451,36 @@ describe('ssh', { skip: isWindows && 'uses POSIX shell scripts as fake ssh' }, (
 		write(vault, 'new.md', 'new');
 		await service.commit('new');
 		await assert.rejects(service.push(), (error) => classifyGitError(error) === 'timeout');
+	});
+});
+
+function hasGitLfs(): boolean {
+	try {
+		execFileSync('git', ['lfs', 'version'], { stdio: 'ignore' });
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+describe('git LFS', { skip: !hasGitLfs() && 'git-lfs is not installed' }, () => {
+	it('stores tracked files in LFS on commit and uploads them on push', async () => {
+		const f = fixture();
+		git(f.root, f.env, 'lfs', 'install');
+		const vault = path.join(f.root, 'vault');
+		fs.mkdirSync(vault);
+		const service = f.service(vault);
+		await service.init(CONFIG_DIR);
+		git(vault, f.env, 'lfs', 'track', '*.pdf');
+		fs.writeFileSync(path.join(vault, 'big.pdf'), Buffer.alloc(2 * 1024 * 1024, 7));
+		assert.equal((await service.commit('with lfs')).kind, 'committed');
+
+		// git stores a pointer, the content goes to LFS
+		assert.match(git(vault, f.env, 'show', 'HEAD:big.pdf'), /^version https:\/\/git-lfs\.github\.com\/spec\/v1/);
+
+		git(vault, f.env, 'remote', 'add', 'origin', f.remote);
+		assert.equal((await service.push()).kind, 'pushed');
+		const other = f.clone('other');
+		assert.equal(fs.statSync(path.join(other, 'big.pdf')).size, 2 * 1024 * 1024);
 	});
 });

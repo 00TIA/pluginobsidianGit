@@ -1,144 +1,165 @@
 # Vault Git Sync
 
-Plugin per Obsidian **desktop** (Windows, macOS, Linux) che versiona il vault con git, tramite [simple-git](https://github.com/steveukx/git-js).
+An Obsidian **desktop** plugin (Windows, macOS, Linux) that keeps your vault under Git, built on [simple-git](https://github.com/steveukx/git-js).
 
-- Comandi **Commit**, **Commit con messaggio personalizzato…**, **Pull**, **Push**, **Sync** (commit + pull + push) e **Inizializza repository**.
-- **Barra di stato** con il numero di file modificati, aggiornata ogni 30 secondi e dopo ogni operazione (più `↑n` / `↓n` per i commit da inviare / scaricare). Un clic apre il menu con i comandi.
-- **Backup automatico** opzionale a intervalli in minuti.
-- **Mai credenziali richieste in modo interattivo**: si usano SSH (chiave in `ssh-agent`) o il credential helper già configurato.
-- In caso di **conflitti dopo un pull** l'operazione si interrompe e viene mostrato un avviso: nessuna risoluzione automatica, nessun push.
+- Commands: **Commit**, **Commit with custom message…**, **Pull**, **Push**, **Sync** (commit + pull + push), **Abort merge** and **Initialize repository**.
+- A **status bar** item with the number of modified files, refreshed every 30 seconds and after every operation (plus `↑n` / `↓n` for commits to push / pull). Click it for a menu with the commands.
+- **Remote URL and commit author** can be set from the plugin settings: no terminal needed.
+- Optional **pull on startup** and **automatic backup** every N minutes.
+- **Never asks for credentials interactively**: it relies on SSH (a key loaded in `ssh-agent`) or on your configured credential helper.
+- **Conflicts after a pull** stop the operation with a clear notice: no automatic resolution, nothing pushed.
 
-Il plugin è solo desktop (`isDesktopOnly: true`): su mobile non viene caricato.
+The plugin is desktop-only (`isDesktopOnly: true`).
 
-## Requisiti
+## Requirements
 
-- Obsidian 1.4.4 o successivo, desktop.
-- [Git](https://git-scm.com/downloads) installato (versione 2.13 o successiva; consigliata ≥ 2.28).
+- Obsidian 1.4.4 or later, desktop.
+- [Git](https://git-scm.com/downloads) 2.13 or later (2.28+ recommended).
 
-## Installazione manuale
+## Manual installation
 
 ```bash
 npm install
 npm run build
 ```
 
-Copia `main.js`, `manifest.json` e `styles.css` in `<vault>/.obsidian/plugins/vault-git-sync/`, poi riavvia Obsidian e attiva il plugin in **Impostazioni → Plugin della community**.
+Copy `main.js`, `manifest.json` and `styles.css` to `<vault>/.obsidian/plugins/vault-git-sync/`, restart Obsidian and enable the plugin in **Settings → Community plugins**.
 
-## Comandi
+## Getting started
 
-| Comando | Cosa fa |
+1. If the vault is not a Git repository, the plugin shows a notice with an **Initialize repository** button (also available as a command). It runs `git init` (branch `main` unless you configured `init.defaultBranch`) and creates:
+   - a `.gitignore` for Obsidian (workspace layout files, `.trash/`, OS files);
+   - a `.gitattributes` with `* text=auto`, so line endings stay consistent when the vault is used on both Windows and macOS/Linux.
+2. In **Settings → Vault Git Sync → Repository**, set the **Remote URL** (copy the SSH or HTTPS address from GitHub/GitLab/…) and, if Git does not know you yet, the **Commit author**.
+3. Run **Sync**. The first push sets the upstream branch.
+
+## Commands
+
+| Command | What it does |
 | --- | --- |
-| **Commit** | `git add` di tutte le modifiche del vault e commit con il messaggio generato dal formato impostato (con timestamp). |
-| **Commit con messaggio personalizzato…** | Come sopra, ma apre una finestra con il messaggio precompilato, modificabile. **Invio** conferma. |
-| **Pull** | `git pull --no-rebase` dal branch upstream. |
-| **Push** | Invia il branch corrente. Al primo push imposta l'upstream (`origin`, oppure l'unico remote presente). |
-| **Sync** | Commit, poi pull, poi push. Si ferma senza fare push se il pull produce conflitti. |
-| **Inizializza repository** | `git init` nel vault (branch `main` se non hai configurato `init.defaultBranch`) e crea un `.gitignore` adatto a Obsidian. |
+| **Commit** | Stages every change in the vault and commits it with the message built from the configured format (with a timestamp). |
+| **Commit with custom message…** | Same, but opens a dialog with the generated message, which you can edit. **Enter** confirms. |
+| **Pull** | `git pull --no-rebase` from the upstream branch. |
+| **Push** | Pushes the current branch; the first time it sets the upstream (`origin`, or the only remote). |
+| **Sync** | Commit, then pull, then push. Stops before pushing if the pull produces conflicts. |
+| **Abort merge** | After a conflicting pull, goes back to the state before the pull (`git merge --abort`), after confirmation. Your commits are kept. |
+| **Initialize repository** | See *Getting started*. |
 
-Il remote si aggiunge da terminale, una volta sola:
+## Settings
 
-```bash
-cd /percorso/del/vault
-git remote add origin git@github.com:utente/vault.git
-```
+- **Git executable** – path of the Git executable; empty means automatic detection (see below). **Git in use** shows which executable was found; **Check** searches again.
+- **Repository**
+  - **Remote URL** – URL of the remote used by pull/push (`origin`, or the remote of the current upstream branch). Adds `origin` if there is no remote yet.
+  - **Commit author** – name and email saved in this repository's config only (`git config --local`); your global Git configuration is never modified. Leave empty to use the global values, which are shown as hints.
+- **Commit message** – format with the placeholders `{{date}}`, `{{hostname}}`, `{{numFiles}}` (default `vault backup: {{date}}`), date format in [Moment.js](https://momentjs.com/docs/#/displaying/format/) syntax (default `YYYY-MM-DD HH:mm:ss`) and a preview.
+- **Automation**
+  - **Pull on startup** – pulls when Obsidian starts. Quiet when there is nothing new; notices for pulled files, conflicts and errors.
+  - **Automatic backup**, **Interval in minutes** (at least 1) and **Include pull and push** – the backup is a full sync, or a local commit only. It is quiet: it reports only errors and conflicts, once, without repeating the same notice at every run.
 
-Se il vault non è un repository git, all'avvio compare un avviso con il pulsante **Inizializza repository**.
+## Git not in PATH
 
-## Impostazioni
+When Obsidian is started from the macOS Dock (or from a desktop launcher on Linux) it does not get your shell's PATH, so Git installed with Homebrew & co. is "not in PATH". The plugin looks for Git in this order:
 
-- **Percorso dell'eseguibile Git** – vuoto = ricerca automatica (vedi sotto). La riga **Git in uso** mostra quale eseguibile è stato trovato; **Verifica** ripete la ricerca.
-- **Formato del messaggio** – segnaposto `{{date}}`, `{{hostname}}`, `{{numFiles}}`. Predefinito: `vault backup: {{date}}`.
-- **Formato della data** – sintassi [moment.js](https://momentjs.com/docs/#/displaying/format/), predefinito `YYYY-MM-DD HH:mm:ss`. Un'anteprima mostra il messaggio risultante.
-- **Backup automatico** – attivazione, **intervallo in minuti** (minimo 1) e **Includi pull e push**: se attivo il backup è un Sync completo, altrimenti solo un commit locale. Il backup automatico è silenzioso: avvisa solo in caso di errori o conflitti (una volta, senza ripetere lo stesso avviso a ogni intervallo).
-
-## Git non nel PATH
-
-Avviando Obsidian dal Dock di macOS (o da un launcher grafico su Linux) il PATH della shell non viene ereditato, quindi `git` installato con Homebrew & co. non risulta "nel PATH". Il plugin cerca git in quest'ordine:
-
-1. il percorso indicato nelle impostazioni (se impostato, deve funzionare: niente ripieghi silenziosi);
-2. le cartelle del PATH;
-3. i percorsi di installazione comuni:
-   - **macOS**: `/opt/homebrew/bin`, `/usr/local/bin`, `/opt/local/bin` (MacPorts), Nix, Xcode / Command Line Tools. `/usr/bin/git` viene usato solo se gli strumenti per sviluppatori sono installati, per non far comparire la finestra di installazione di Xcode;
+1. the path set in the settings (if set, it must work: no silent fallback);
+2. the folders in PATH;
+3. the common install locations:
+   - **macOS**: `/opt/homebrew/bin`, `/usr/local/bin`, `/opt/local/bin` (MacPorts), Nix, Xcode / Command Line Tools. `/usr/bin/git` is used only when the developer tools are installed, so the "install Xcode tools" dialog never pops up;
    - **Windows**: `Program Files\Git\cmd`, `Program Files (x86)\Git\cmd`, `%LOCALAPPDATA%\Programs\Git\cmd`, Scoop;
    - **Linux**: `/usr/bin`, `/usr/local/bin`, `/snap/bin`, Nix, Linuxbrew, `~/.local/bin`;
-4. su macOS e Linux, il PATH di una shell di login (`$SHELL -lc 'command -v git'`).
+4. on macOS and Linux, the PATH of a login shell (`$SHELL -lc 'command -v git'`).
 
-Ai processi avviati da git vengono aggiunte in coda al PATH la cartella di git e i percorsi comuni esistenti, così funzionano anche `git-lfs`, `gh auth git-credential` e simili.
+Git's folder and the existing common locations are appended to the PATH of the processes started by Git, so `git-lfs`, `gh auth git-credential` and similar tools work too.
 
-## Credenziali: mai interattive
+## Credentials: never interactive
 
-Il plugin non mostra mai richieste di username, password o passphrase, e impedisce che lo facciano git, ssh o il credential helper:
+The plugin never shows username, password or passphrase prompts, and prevents Git, ssh and credential helpers from doing so:
 
-- `GIT_TERMINAL_PROMPT=0` e `-c core.askPass=` (vuoto): git non chiede nulla, nemmeno tramite programmi grafici `SSH_ASKPASS`;
-- `GCM_INTERACTIVE=never` e `-c credential.interactive=false`: Git Credential Manager usa solo credenziali già salvate;
-- se non hai configurato un tuo comando SSH (`core.sshCommand`, `GIT_SSH`, `GIT_SSH_COMMAND`), ssh viene eseguito con `-o BatchMode=yes` (niente passphrase né conferma della chiave host); se l'hai configurato viene rispettato così com'è;
-- le operazioni di rete che restano senza output per 2 minuti vengono interrotte.
+- `GIT_TERMINAL_PROMPT=0` and `-c core.askPass=` (empty): Git asks nothing, not even through graphical `SSH_ASKPASS` programs;
+- `GCM_INTERACTIVE=never` and `-c credential.interactive=false`: Git Credential Manager (and Git 2.46+) only use saved credentials;
+- unless you configured your own SSH command (`core.sshCommand`, `GIT_SSH`, `GIT_SSH_COMMAND`), ssh runs with `-o BatchMode=yes` (no passphrase, no host key confirmation); your own command is used as is;
+- network operations that produce no output for 2 minutes are stopped.
 
-Quindi le credenziali devono essere già disponibili:
+So credentials must already be available:
 
-- **SSH**: chiave caricata in `ssh-agent` (su macOS `ssh-add --apple-use-keychain`, su Windows il servizio *OpenSSH Authentication Agent*) e host già presente in `known_hosts` (collegati una volta da terminale, es. `ssh -T git@github.com`);
-- **HTTPS**: un credential helper con le credenziali salvate (Git Credential Manager su Windows/macOS/Linux, `osxkeychain`, `libsecret`, …). Fai un `git pull` da terminale una volta per salvarle.
+- **SSH**: a key loaded in `ssh-agent` (on macOS `ssh-add --apple-use-keychain`, on Windows the *OpenSSH Authentication Agent* service) and the host already in `known_hosts` (connect once from a terminal, e.g. `ssh -T git@github.com`);
+- **HTTPS**: a credential helper with saved credentials (Git Credential Manager on Windows/macOS/Linux, `osxkeychain`, `libsecret`, …). Pull once from a terminal to save them.
 
-Se l'autenticazione fallisce compare un avviso che spiega cosa configurare, con il dettaglio dell'errore di git.
+When authentication fails, a notice explains what to configure, with Git's error message.
 
-## Conflitti
+## Conflicts
 
-Il pull usa sempre il merge (`--no-rebase`), indipendentemente da `pull.rebase`. Se produce conflitti:
+Pull always merges (`--no-rebase`), whatever `pull.rebase` says. If the merge produces conflicts:
 
-- l'operazione si interrompe, **il push non viene eseguito** e non si tenta alcuna risoluzione automatica;
-- un avviso elenca i file in conflitto (con pulsanti per aprirli); nella barra di stato compare `Git: N in conflitto`;
-- i marcatori `<<<<<<<` / `=======` / `>>>>>>>` restano nei file: scegli il contenuto corretto, elimina i marcatori e poi esegui **Commit** (o **Sync**) per concludere il merge. Il commit viene rifiutato finché nei file restano marcatori;
-- pull, push e backup automatico restano sospesi finché il merge non è concluso; il backup automatico non conclude mai un merge da solo.
+- the operation stops, **nothing is pushed** and no automatic resolution is attempted;
+- a notice lists the conflicted files, with buttons to open them and to **Abort merge**; the status bar shows `Git: N conflicted`;
+- the `<<<<<<<` / `=======` / `>>>>>>>` markers stay in the files: keep the right content, remove the markers, then run **Commit** (or **Sync**) to conclude the merge. The commit is refused while markers remain;
+- or run **Abort merge** to go back to the state before the pull (changes made while resolving are lost; your commits are kept and the remote changes will be merged again at the next pull);
+- pull, push and the automatic backup stay paused until the merge is concluded or aborted; the automatic backup never concludes a merge by itself.
 
-Per annullare il merge e tornare allo stato precedente al pull: `git merge --abort` da terminale.
+Note: Git cannot put markers in binary files (images, PDFs); the local version stays unless you replace it before committing.
 
-Nota: nei file binari (immagini, PDF) git non può inserire marcatori; rimane la versione locale, a meno che tu non la sostituisca prima del commit.
+## Large files and Git LFS
 
-## Altri dettagli
+Git LFS is **not** applied automatically by file size: it stores in LFS only the files matching the patterns in `.gitattributes`. To use it:
 
-- Messaggi di git in inglese (`LC_ALL=C`) per riconoscere gli errori in modo affidabile; gli avvisi del plugin sono in italiano.
-- Il controllo periodico usa `GIT_OPTIONAL_LOCKS=0`: non blocca `index.lock` e non disturba altri programmi git aperti sullo stesso repository.
-- Le operazioni sono serializzate: se una è in corso, le altre vengono rifiutate con un avviso (il backup automatico salta il turno).
-- Se il vault è una sottocartella di un repository più grande, conteggio, `add` e commit sono limitati al vault (il repository trovato è indicato nelle impostazioni).
-- Problemi specifici segnalati con un avviso dedicato: identità git non configurata (`user.name` / `user.email`), `index.lock` presente, repository con proprietario diverso (`safe.directory`), remote irraggiungibile, push rifiutato perché il remote ha nuovi commit, HEAD staccato.
+```bash
+git lfs install                       # once per computer (e.g. after brew install git-lfs)
+cd /path/to/vault
+git lfs track "*.pdf" "*.mp4" "*.zip" # once per vault: writes .gitattributes
+```
 
-### Limiti noti
+Then commit `.gitattributes` (Commit / Sync). From then on the plugin handles LFS transparently: matching files are stored as LFS pointers on commit and uploaded on push, also when Obsidian is started from the Dock (the folder of `git-lfs` is added to the PATH). LFS authentication follows the same non-interactive rules as Git.
 
-- Obsidian installato come **Flatpak** non vede il git del sistema: usa il pacchetto ufficiale (AppImage/deb/rpm) o un git disponibile nella sandbox.
-- Firma dei commit con GPG: l'eventuale richiesta della passphrase dipende da `gpg-agent`/pinentry, non dal plugin.
+Keep in mind:
 
-## Sviluppo
+- files committed before `git lfs track` stay in the normal Git history (moving them needs `git lfs migrate`, which rewrites history);
+- GitHub rejects files larger than 100 MB that are not in LFS, and LFS storage and bandwidth have quotas on most hosts.
+
+## Other details
+
+- Git runs with English messages (`LC_ALL=C`) so errors are recognised reliably.
+- The periodic status check uses `GIT_OPTIONAL_LOCKS=0`: it never takes `index.lock` and does not disturb other Git programs working on the same repository.
+- Operations are serialised: while one runs, the others are refused with a notice (the automatic backup skips its turn).
+- If the vault is a sub-folder of a larger repository, counting, staging and committing are limited to the vault (the repository found is shown in the settings).
+- Specific notices for: unknown author (`user.name` / `user.email`), existing `index.lock`, repository owned by another user (`safe.directory`), unreachable remote, push rejected because the remote has new commits, detached HEAD.
+
+### Known limitations
+
+- Obsidian installed as a **Flatpak** cannot see the system Git: use the official AppImage/deb/rpm or a Git available inside the sandbox.
+- GPG commit signing: a passphrase prompt, if any, comes from `gpg-agent`/pinentry, not from the plugin.
+
+## Development
 
 ```bash
 npm install
-npm run dev     # build in watch mode
-npm run build   # typecheck + build di produzione (main.js)
-npm run lint    # ESLint con eslint-plugin-obsidianmd
-npm test        # test unitari e d'integrazione con git reale
+npm run dev     # watch mode
+npm run build   # typecheck + production build (main.js)
+npm run lint    # ESLint with eslint-plugin-obsidianmd
+npm test        # unit and integration tests with real Git
 ```
 
-Struttura:
+Layout:
 
 ```
 src/
-  main.ts              ciclo di vita del plugin, timer
-  commands.ts          registrazione dei comandi
-  git-controller.ts    collega il servizio git a Obsidian: lock, avvisi, barra di stato, backup automatico
-  settings.ts          scheda impostazioni
-  settings-data.ts     modello delle impostazioni e validazione
-  commit-message.ts    formato del messaggio di commit
-  messages.ts          testi per l'utente
+  main.ts              plugin lifecycle, timers
+  commands.ts          command registration
+  git-controller.ts    connects the Git service to Obsidian: locking, notices, status bar, automation
+  settings.ts          settings tab
+  settings-data.ts     settings model and validation
+  commit-message.ts    commit message format
+  messages.ts          user-facing texts
   git/
-    git-service.ts     commit / pull / push / sync / init con simple-git (senza dipendenze da Obsidian)
-    git-env.ts         ambiente non interattivo per git e ssh
-    locate-git.ts      ricerca dell'eseguibile git
-    errors.ts          classificazione degli errori di git
-  ui/                  avvisi, finestra del commit, barra di stato
+    git-service.ts     commit / pull / push / sync / init / remote / author / abort merge (no Obsidian dependency)
+    git-env.ts         non-interactive environment for Git and ssh
+    locate-git.ts      Git executable lookup
+    errors.ts          classification of Git errors
+  ui/                  notices, commit and confirmation dialogs, status bar
 test/                  node:test + tsx
 ```
 
-I test d'integrazione creano repository temporanei con un remote locale e verificano, tra l'altro: conflitti dopo il pull (nessun push, marcatori lasciati nei file, merge concluso solo a mano), nessuna richiesta di credenziali contro un server HTTP che risponde 401 (anche con un programma `SSH_ASKPASS` configurato), ssh in `BatchMode` e rispetto di `core.sshCommand`, timeout delle operazioni di rete, ricerca di git con PATH vuoto, caricamento del bundle di produzione con un modulo `obsidian` simulato. La CI li esegue su Linux, macOS e Windows.
+The integration tests create temporary repositories with a local remote and check, among other things: conflicts after a pull (nothing pushed, markers left in the files, merge concluded only by hand or aborted), no credential prompt against an HTTP server answering 401 (even with an `SSH_ASKPASS` program configured), ssh in `BatchMode` and `core.sshCommand` respected, timeouts of network operations, Git lookup with an empty PATH, remote and author settings, Git LFS commit and push, and the production bundle loaded with a fake `obsidian` module. CI runs them on Linux, macOS and Windows.
 
-## Licenza
+## License
 
-0BSD, vedi [LICENSE](LICENSE). Basato su [obsidian-sample-plugin](https://github.com/obsidianmd/obsidian-sample-plugin).
+0BSD, see [LICENSE](LICENSE). Based on [obsidian-sample-plugin](https://github.com/obsidianmd/obsidian-sample-plugin).

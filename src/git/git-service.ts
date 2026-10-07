@@ -66,6 +66,22 @@ export type PushOutcome =
 	| { kind: 'no-commits' }
 	| { kind: 'detached' };
 
+export interface RemoteInfo {
+	name: string;
+	url: string | null;
+}
+
+export interface Identity {
+	/** Effective values (repository config, else global config). */
+	name: string | null;
+	email: string | null;
+	/** Values set in this repository only; null when inherited from the global config. */
+	localName: string | null;
+	localEmail: string | null;
+}
+
+export type AbortMergeOutcome = { kind: 'aborted' } | { kind: 'no-merge' };
+
 export interface SyncOutcome {
 	commit: CommitOutcome;
 	pull?: PullOutcome;
@@ -111,18 +127,31 @@ const MAX_MARKER_SCAN_BYTES = 5 * 1024 * 1024;
 /** .gitignore created by `init`; `configDir` is Obsidian's configuration folder (`Vault#configDir`). */
 export function defaultGitignore(configDir: string): string {
 	return [
-		'# Obsidian: stato dell\'interfaccia, cambia di continuo',
+		'# Obsidian: layout of the workspace, changes all the time',
 		`${configDir}/workspace.json`,
 		`${configDir}/workspace-mobile.json`,
 		'',
-		'# Cestino di Obsidian',
+		'# Obsidian trash',
 		'.trash/',
 		'',
-		'# File di sistema',
+		'# Operating system files',
 		'.DS_Store',
 		'Thumbs.db',
 		'',
 	].join('\n');
+}
+
+/** .gitattributes created by `init`: same line endings in the repository whatever the OS. */
+export const DEFAULT_GITATTRIBUTES = [
+	'# Store text files with LF line endings, check them out with the native ones',
+	'* text=auto',
+	'',
+].join('\n');
+
+/** A remote URL that can safely be passed to `git remote add/set-url`. */
+export function isValidRemoteUrl(url: string): boolean {
+	const trimmed = url.trim();
+	return trimmed.length > 0 && !trimmed.startsWith('-') && !/[\r\n]/.test(trimmed);
 }
 
 /** True when a file still contains git conflict markers. */
@@ -209,9 +238,10 @@ export class GitService {
 		return this.client('network', userSsh ? undefined : BATCH_SSH_COMMAND);
 	}
 
-	private async config(key: string): Promise<string | null> {
+	private async config(key: string, scope?: 'local'): Promise<string | null> {
 		try {
-			const value = (await this.client().raw(['config', '--get', key])).trim();
+			const args = scope ? ['config', `--${scope}`, '--get', key] : ['config', '--get', key];
+			const value = (await this.client().raw(args)).trim();
 			return value || null;
 		} catch {
 			return null;
@@ -262,13 +292,75 @@ export class GitService {
 				await git.raw(['init']);
 			}
 		}
-		const gitignore = path.join(this.options.vaultPath, '.gitignore');
-		if (!fs.existsSync(gitignore)) {
-			await fs.promises.writeFile(gitignore, defaultGitignore(configDir), 'utf8');
-		}
+		await this.writeIfMissing('.gitignore', defaultGitignore(configDir));
+		await this.writeIfMissing('.gitattributes', DEFAULT_GITATTRIBUTES);
 		const repo = await this.detectRepository();
 		if (!repo) throw new Error('fatal: not a git repository (init failed)');
 		return repo;
+	}
+
+	private async writeIfMissing(file: string, content: string): Promise<void> {
+		const target = path.join(this.options.vaultPath, file);
+		if (!fs.existsSync(target)) await fs.promises.writeFile(target, content, 'utf8');
+	}
+
+	/** The remote used by pull/push: the upstream's remote, else `origin`, else the first one. */
+	async remote(): Promise<RemoteInfo | null> {
+		await this.requireRepo();
+		const remotes = lines(await this.client().raw(['remote']));
+		if (!remotes.length) return null;
+		const branch = (await this.client().raw(['symbolic-ref', '--short', '-q', 'HEAD'])).trim();
+		let name = branch ? await this.config(`branch.${branch}.remote`) : null;
+		if (!name || !remotes.includes(name)) name = remotes.includes('origin') ? 'origin' : remotes[0]!;
+		return { name, url: await this.config(`remote.${name}.url`) };
+	}
+
+	/** Changes the URL of the remote used by pull/push, or adds `origin` when there is none. */
+	async setRemoteUrl(url: string): Promise<{ name: string; added: boolean }> {
+		if (!isValidRemoteUrl(url)) throw new Error(`Invalid remote URL: ${url}`);
+		const current = await this.remote();
+		const name = current?.name ?? 'origin';
+		const git = this.client();
+		if (current) await git.raw(['remote', 'set-url', name, url.trim()]);
+		else await git.raw(['remote', 'add', name, url.trim()]);
+		return { name, added: !current };
+	}
+
+	async identity(): Promise<Identity> {
+		await this.requireRepo();
+		return {
+			name: await this.config('user.name'),
+			email: await this.config('user.email'),
+			localName: await this.config('user.name', 'local'),
+			localEmail: await this.config('user.email', 'local'),
+		};
+	}
+
+	/**
+	 * Sets the commit author in this repository's config only (the global config is never
+	 * touched). An empty value removes the repository setting, so the global one applies.
+	 */
+	async setIdentity(values: { name?: string; email?: string }): Promise<void> {
+		await this.requireRepo();
+		const git = this.client();
+		for (const [key, value] of [
+			['user.name', values.name],
+			['user.email', values.email],
+		] as const) {
+			if (value === undefined) continue;
+			const trimmed = value.trim();
+			// `--unset` exits with 5 and no output when the key is not set: not an error
+			if (trimmed) await git.raw(['config', '--local', key, trimmed]);
+			else await git.raw(['config', '--local', '--unset', key]);
+		}
+	}
+
+	/** Cancels a merge in progress (e.g. after a conflicting pull), back to the state before it. */
+	async abortMerge(): Promise<AbortMergeOutcome> {
+		const repo = await this.requireRepo();
+		if (!fs.existsSync(path.join(repo.gitDir, 'MERGE_HEAD'))) return { kind: 'no-merge' };
+		await this.client().raw(['merge', '--abort']);
+		return { kind: 'aborted' };
 	}
 
 	async status(): Promise<RepoStatus> {

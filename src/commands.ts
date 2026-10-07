@@ -10,7 +10,7 @@ export function registerCommands(plugin: VaultGitPlugin): void {
 	});
 	plugin.addCommand({
 		id: 'commit-with-message',
-		name: 'Commit con messaggio personalizzato…',
+		name: 'Commit with custom message…',
 		callback: () => void controller().commitWithMessage(),
 	});
 	plugin.addCommand({
@@ -25,12 +25,17 @@ export function registerCommands(plugin: VaultGitPlugin): void {
 	});
 	plugin.addCommand({
 		id: 'sync',
-		name: 'Sync (commit, pull e push)',
+		name: 'Sync (commit, pull and push)',
 		callback: () => void controller().sync(),
 	});
 	plugin.addCommand({
+		id: 'abort-merge',
+		name: 'Abort merge',
+		callback: () => void controller().abortMerge(),
+	});
+	plugin.addCommand({
 		id: 'init-repository',
-		name: 'Inizializza repository',
+		name: 'Initialize repository',
 		callback: () => void controller().initRepository(),
 	});
 }

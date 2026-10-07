@@ -40,6 +40,7 @@ describe('settings', () => {
 
 	it('normalises saved data', () => {
 		assert.deepEqual(normalizeSettings(null), DEFAULT_SETTINGS);
+		assert.equal(normalizeSettings({ pullOnStartup: true }).pullOnStartup, true);
 		assert.deepEqual(
 			normalizeSettings({
 				gitPath: ' /opt/homebrew/bin/git ',
@@ -61,29 +62,34 @@ describe('settings', () => {
 describe('messages', () => {
 	it('lists files with a limit', () => {
 		assert.equal(fileList(['a', 'b']), 'a, b');
-		assert.equal(fileList(['a', 'b', 'c', 'd'], 2), 'a, b e altri 2');
+		assert.equal(fileList(['a', 'b', 'c', 'd'], 2), 'a, b and 2 more');
 	});
 
 	it('describes outcomes', () => {
-		assert.equal(describeCommit({ kind: 'committed', files: 1, message: 'm' }), 'Commit eseguito (1 file).');
-		assert.equal(describePull({ kind: 'pulled', files: 4 }), 'Pull completato: 4 file aggiornati.');
+		assert.equal(describeCommit({ kind: 'committed', files: 1, message: 'm' }), 'Committed 1 file.');
+		assert.equal(describePull({ kind: 'pulled', files: 4 }), 'Pulled: 4 files updated.');
 		assert.match(
 			describePush({ kind: 'pushed', commits: null, remote: 'origin', branch: 'main', setUpstream: true }),
-			/«main» pubblicato su origin/,
+			/"main" published to origin/,
 		);
-		assert.match(describePush({ kind: 'no-remote' }), /git remote add origin/);
+		assert.match(describePush({ kind: 'no-remote' }), /set the remote URL in Settings → Vault Git Sync/);
+		assert.equal(
+			describePush({ kind: 'pushed', commits: 2, remote: 'origin', branch: 'main', setUpstream: false }),
+			'Pushed 2 commits.',
+		);
 	});
 
 	it('explains that conflicts are not resolved automatically and nothing was pushed', () => {
 		const text = conflictNoticeLines(['note.md']).join(' ');
 		assert.match(text, /note\.md/);
-		assert.match(text, /nessuna risoluzione automatica/);
-		assert.match(text, /push non è stato eseguito/);
+		assert.match(text, /no automatic resolution/);
+		assert.match(text, /nothing was pushed/);
+		assert.match(text, /Abort merge/);
 	});
 
 	it('mentions SSH and the credential helper on authentication errors', () => {
 		const text = errorMessage('auth', '/vault');
-		assert.match(text, /non chiede mai credenziali/);
+		assert.match(text, /never asks for credentials/);
 		assert.match(text, /SSH/);
 		assert.match(text, /credential helper/);
 	});
@@ -102,27 +108,27 @@ describe('status bar text', () => {
 	const updatedAt = new Date(2026, 9, 7, 14, 30, 0);
 
 	it('shows the number of modified files', () => {
-		assert.equal(describeStatusBar({ kind: 'ready', status, updatedAt }).text, 'Git: 3 file modificati');
+		assert.equal(describeStatusBar({ kind: 'ready', status, updatedAt }).text, 'Git: 3 modified files');
 		assert.equal(
 			describeStatusBar({ kind: 'ready', status: { ...status, changedFiles: 1 }, updatedAt }).text,
-			'Git: 1 file modificato',
+			'Git: 1 modified file',
 		);
 	});
 
 	it('shows commits to push/pull and conflicts', () => {
 		assert.equal(
 			describeStatusBar({ kind: 'ready', status: { ...status, ahead: 2, behind: 1 }, updatedAt }).text,
-			'Git: 3 file modificati ↑2 ↓1',
+			'Git: 3 modified files ↑2 ↓1',
 		);
 		assert.equal(
 			describeStatusBar({ kind: 'ready', status: { ...status, conflicted: ['a.md', 'b.md'] }, updatedAt }).text,
-			'Git: 2 in conflitto',
+			'Git: 2 conflicted',
 		);
 	});
 
 	it('shows the other states', () => {
-		assert.equal(describeStatusBar({ kind: 'no-git' }).text, 'Git: non trovato');
-		assert.equal(describeStatusBar({ kind: 'not-repo' }).text, 'Git: nessun repository');
-		assert.equal(describeStatusBar({ kind: 'busy', label: 'sync in corso' }).text, 'Git: sync in corso…');
+		assert.equal(describeStatusBar({ kind: 'no-git' }).text, 'Git: not found');
+		assert.equal(describeStatusBar({ kind: 'not-repo' }).text, 'Git: no repository');
+		assert.equal(describeStatusBar({ kind: 'busy', label: 'sync' }).text, 'Git: sync…');
 	});
 });

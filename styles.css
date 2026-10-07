@@ -19,3 +19,7 @@
 	width: 100%;
 	min-width: 280px;
 }
+
+.vault-git-wide-input {
+	min-width: 260px;
+}

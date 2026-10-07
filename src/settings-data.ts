@@ -7,6 +7,8 @@ export interface VaultGitSettings {
 	commitMessage: string;
 	/** moment.js format used for {{date}}. */
 	dateFormat: string;
+	/** Pull when Obsidian starts. */
+	pullOnStartup: boolean;
 	autoBackup: boolean;
 	/** Minutes between automatic backups. */
 	autoBackupInterval: number;
@@ -18,6 +20,7 @@ export const DEFAULT_SETTINGS: VaultGitSettings = {
 	gitPath: '',
 	commitMessage: DEFAULT_COMMIT_TEMPLATE,
 	dateFormat: DEFAULT_DATE_FORMAT,
+	pullOnStartup: false,
 	autoBackup: false,
 	autoBackupInterval: 10,
 	autoBackupSync: true,
@@ -46,6 +49,7 @@ export function normalizeSettings(saved: unknown): VaultGitSettings {
 		gitPath: text(raw.gitPath, DEFAULT_SETTINGS.gitPath).trim(),
 		commitMessage: text(raw.commitMessage, DEFAULT_SETTINGS.commitMessage),
 		dateFormat: text(raw.dateFormat, DEFAULT_SETTINGS.dateFormat),
+		pullOnStartup: flag(raw.pullOnStartup, DEFAULT_SETTINGS.pullOnStartup),
 		autoBackup: flag(raw.autoBackup, DEFAULT_SETTINGS.autoBackup),
 		autoBackupInterval: interval ?? DEFAULT_SETTINGS.autoBackupInterval,
 		autoBackupSync: flag(raw.autoBackupSync, DEFAULT_SETTINGS.autoBackupSync),

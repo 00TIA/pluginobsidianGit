@@ -77,7 +77,7 @@ interface FakePlugin {
 	intervals: number[];
 	commands: { id: string; name: string }[];
 	statusBarItems: FakeElement[];
-	settings: { gitPath: string };
+	settings: { gitPath: string; pullOnStartup: boolean };
 	controller: {
 		start(): Promise<void>;
 		setup(): Promise<void>;
@@ -85,6 +85,13 @@ interface FakePlugin {
 		commit(): Promise<void>;
 		push(): Promise<void>;
 		autoBackup(): Promise<void>;
+		repositorySettings(): Promise<{
+			available: boolean;
+			remote?: { name: string; url: string | null } | null;
+			identity?: { name: string | null; localName: string | null };
+		}>;
+		setRemoteUrl(url: string): Promise<boolean>;
+		setIdentity(values: { name?: string; email?: string }): Promise<boolean>;
 		refreshStatus(): Promise<void>;
 	};
 	onload(): Promise<void>;
@@ -153,40 +160,41 @@ describe('production bundle', () => {
 	it('registers the commands', () => {
 		assert.deepEqual(
 			plugin.commands.map((command) => command.id),
-			['commit', 'commit-with-message', 'pull', 'push', 'sync', 'init-repository'],
+			['commit', 'commit-with-message', 'pull', 'push', 'sync', 'abort-merge', 'init-repository'],
 		);
 	});
 
 	it('warns at startup that the vault is not a repository and offers to initialise it', async () => {
 		assert.ok(layoutReady);
 		await plugin.controller.start();
-		assert.match(lastNotice(), /non è un repository Git/);
-		assert.match(lastNotice(), /Inizializza repository/);
-		assert.equal(statusText(), 'Git: nessun repository');
+		assert.match(lastNotice(), /not a Git repository/);
+		assert.match(lastNotice(), /Initialize repository/);
+		assert.equal(statusText(), 'Git: no repository');
 	});
 
 	it('initialises the repository', async () => {
 		await plugin.controller.initRepository();
-		assert.match(lastNotice(), /Repository Git inizializzato/);
+		assert.match(lastNotice(), /Git repository initialized/);
 		assert.ok(fs.existsSync(path.join(vault, '.git')));
-		assert.equal(statusText(), 'Git: 1 file modificato');
+		// .gitignore and .gitattributes
+		assert.equal(statusText(), 'Git: 2 modified files');
 	});
 
 	it('commits and updates the modified files count', async () => {
 		write(vault, 'a.md', 'a');
 		write(vault, 'b.md', 'b');
 		await plugin.controller.refreshStatus();
-		assert.equal(statusText(), 'Git: 3 file modificati');
+		assert.equal(statusText(), 'Git: 4 modified files');
 		await plugin.controller.commit();
-		assert.equal(lastNotice(), 'Commit eseguito (3 file).');
-		assert.equal(statusText(), 'Git: 0 file modificati');
+		assert.equal(lastNotice(), 'Committed 4 files.');
+		assert.equal(statusText(), 'Git: 0 modified files');
 		await plugin.controller.commit();
-		assert.equal(lastNotice(), 'Nessuna modifica da salvare.');
+		assert.equal(lastNotice(), 'Nothing to commit.');
 	});
 
 	it('explains that a remote is needed to push', async () => {
 		await plugin.controller.push();
-		assert.match(lastNotice(), /Nessun remote configurato/);
+		assert.match(lastNotice(), /No remote configured/);
 	});
 
 	it('reports a failing automatic backup once, not at every interval', async () => {
@@ -203,9 +211,9 @@ describe('production bundle', () => {
 			write(vault, 'auto-1.md', 'one');
 			await plugin.controller.autoBackup();
 			assert.equal(notices.length, before + 1);
-			assert.match(lastNotice(), /Backup automatico interrotto/);
-			assert.match(lastNotice(), /Commit eseguito \(1 file\)/);
-			assert.match(lastNotice(), /non chiede mai credenziali/);
+			assert.match(lastNotice(), /Automatic backup stopped/);
+			assert.match(lastNotice(), /Committed 1 file/);
+			assert.match(lastNotice(), /never asks for credentials/);
 
 			write(vault, 'auto-2.md', 'two');
 			write(vault, 'auto-3.md', 'three');
@@ -213,21 +221,57 @@ describe('production bundle', () => {
 			assert.equal(notices.length, before + 1, 'the same problem is not reported again');
 			// the local commits are made anyway
 			assert.equal(git(vault, process.env, 'rev-list', '--count', 'HEAD'), '3');
-			assert.equal(statusText(), 'Git: 0 file modificati');
+			assert.equal(statusText(), 'Git: 0 modified files');
 		} finally {
 			git(vault, process.env, 'remote', 'remove', 'origin');
 			await new Promise<void>((resolve) => server.close(() => resolve()));
 		}
 	});
 
+	it('sets the commit author and the remote from the settings', async () => {
+		let settings = await plugin.controller.repositorySettings();
+		assert.equal(settings.available, true);
+		assert.equal(settings.remote, null);
+		assert.deepEqual(settings.identity && [settings.identity.name, settings.identity.localName], ['Test User', null]);
+
+		assert.equal(await plugin.controller.setIdentity({ name: 'Vault Owner', email: 'owner@example.com' }), true);
+		assert.equal(lastNotice(), 'Commits will be authored as Vault Owner <owner@example.com>.');
+
+		assert.equal(await plugin.controller.setRemoteUrl('  '), false);
+		assert.match(lastNotice(), /Enter a remote URL/);
+		const remote = path.join(dir, 'remote.git');
+		git(dir, process.env, 'init', '--bare', remote);
+		assert.equal(await plugin.controller.setRemoteUrl(remote), true);
+		assert.equal(lastNotice(), `Remote "origin" added: ${remote}`);
+		settings = await plugin.controller.repositorySettings();
+		assert.deepEqual(settings.remote, { name: 'origin', url: remote });
+	});
+
+	it('pulls on startup when enabled', async () => {
+		await plugin.controller.push();
+		assert.match(lastNotice(), /published to origin/);
+		const other = path.join(dir, 'other');
+		git(dir, process.env, 'clone', path.join(dir, 'remote.git'), other);
+		write(other, 'from-other-device.md', 'hello');
+		git(other, process.env, 'add', '-A');
+		git(other, process.env, 'commit', '-m', 'other device');
+		git(other, process.env, 'push');
+
+		plugin.settings.pullOnStartup = true;
+		await plugin.controller.start();
+		assert.equal(lastNotice(), 'Pull on startup Pulled: 1 file updated.');
+		assert.ok(fs.existsSync(path.join(vault, 'from-other-device.md')));
+		plugin.settings.pullOnStartup = false;
+	});
+
 	it('reports a git path that does not work', async () => {
 		plugin.settings.gitPath = path.join(dir, 'missing', 'git');
 		await plugin.controller.setup();
-		assert.equal(statusText(), 'Git: non trovato');
+		assert.equal(statusText(), 'Git: not found');
 		await plugin.controller.commit();
-		assert.match(lastNotice(), /percorso di Git impostato non funziona/);
+		assert.match(lastNotice(), /configured Git path does not work/);
 		plugin.settings.gitPath = '';
 		await plugin.controller.setup();
-		assert.equal(statusText(), 'Git: 0 file modificati');
+		assert.equal(statusText(), 'Git: 0 modified files');
 	});
 });

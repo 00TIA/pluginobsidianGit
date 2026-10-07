@@ -21,12 +21,12 @@ export class CommitMessageModal extends Modal {
 		contentEl.createEl('p', {
 			text:
 				this.changedFiles === 1
-					? '1 file modificato verrà incluso nel commit.'
-					: `${this.changedFiles} file modificati verranno inclusi nel commit.`,
+					? '1 modified file will be committed.'
+					: `${this.changedFiles} modified files will be committed.`,
 		});
 
 		let input: TextComponent | undefined;
-		new Setting(contentEl).setName('Messaggio').addText((text) => {
+		new Setting(contentEl).setName('Message').addText((text) => {
 			input = text;
 			text.setValue(this.value).onChange((value) => (this.value = value));
 			text.inputEl.addClass('vault-git-commit-input');
@@ -39,7 +39,7 @@ export class CommitMessageModal extends Modal {
 		});
 
 		new Setting(contentEl)
-			.addButton((button) => button.setButtonText('Annulla').onClick(() => this.close()))
+			.addButton((button) => button.setButtonText('Cancel').onClick(() => this.close()))
 			.addButton((button) =>
 				button
 					.setButtonText('Commit')
