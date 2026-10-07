@@ -3,7 +3,7 @@
 	"name": "Vault Git Sync",
 	"version": "1.0.0",
 	"minAppVersion": "1.4.4",
-	"description": "Commit, pull, push and sync your vault with git. Shows modified files in the status bar and supports automatic backups.",
-	"author": "00TIA",
+	"description": "Commit, pull, push and sync your vault with Git, without ever being asked for credentials. Side panel with the changed files, guided setup, automatic backups and warnings for large files.",
+	"author": "mercuriosolutions",
 	"isDesktopOnly": true
 }

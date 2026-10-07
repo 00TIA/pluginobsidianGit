@@ -17,14 +17,20 @@ The plugin is desktop-only (`isDesktopOnly: true`).
 - Obsidian 1.4.4 or later, desktop.
 - [Git](https://git-scm.com/downloads) 2.13 or later (2.28+ recommended).
 
-## Manual installation
+## Installation
+
+- **From Obsidian** (once the plugin is listed): **Settings → Community plugins → Browse**, search for *Vault Git Sync*, then **Install** and **Enable**.
+- **Before it is listed**, with the [BRAT](https://github.com/TfTHacker/obsidian42-brat) plugin: **Add beta plugin** → `00TIA/pluginobsidianGit`.
+- **Manually**: download `main.js`, `manifest.json` and `styles.css` from the latest [release](https://github.com/00TIA/pluginobsidianGit/releases) into `<vault>/.obsidian/plugins/vault-git-sync/`, restart Obsidian and enable the plugin in **Settings → Community plugins**.
+
+To build it from the source code instead:
 
 ```bash
 npm install
 npm run build
 ```
 
-Copy `main.js`, `manifest.json` and `styles.css` to `<vault>/.obsidian/plugins/vault-git-sync/`, restart Obsidian and enable the plugin in **Settings → Community plugins**.
+then copy `main.js`, `manifest.json` and `styles.css` as above.
 
 ## Getting started
 
@@ -136,6 +142,13 @@ Keep in mind:
 - files committed before `git lfs track` stay in the normal Git history (moving them needs `git lfs migrate`, which rewrites history);
 - GitHub rejects files larger than 100 MB that are not in LFS, and LFS storage and bandwidth have quotas on most hosts.
 
+## Network use and privacy
+
+- The plugin makes no network requests of its own. It runs Git on your computer, and Git contacts only the remotes configured for the vault (for example your GitHub repository), when you pull, push or sync, and when **Pull on startup** or **Automatic backup** with pull and push are on.
+- No telemetry, no analytics, no third-party services.
+- The plugin never reads, asks for or stores credentials: Git uses your SSH keys or your credential helper.
+- It reads and writes the files of the vault and the repository's own Git configuration (`git config --local`, for the remote URL and the commit author). To find the Git executable it checks the common install locations and, on macOS and Linux, asks your login shell where `git` is.
+
 ## Other details
 
 - Git runs with English messages (`LC_ALL=C`) so errors are recognised reliably.
@@ -180,6 +193,15 @@ test/                  node:test + tsx
 ```
 
 The integration tests create temporary repositories with a local remote and check, among other things: conflicts after a pull (nothing pushed, markers left in the files, merge concluded only by hand or aborted), no credential prompt against an HTTP server answering 401 (even with an `SSH_ASKPASS` program configured), ssh in `BatchMode` and `core.sshCommand` respected, timeouts of network operations, Git lookup with an empty PATH, remote and author settings, Git LFS commit and push, and the production bundle loaded with a fake `obsidian` module. CI runs them on Linux, macOS and Windows.
+
+## Releasing a new version
+
+```bash
+npm version patch        # or minor / major: updates manifest.json, versions.json and creates the tag
+git push --follow-tags   # the Release workflow builds the plugin and creates a draft release
+```
+
+Then open the draft on the GitHub **Releases** page and publish it: Obsidian offers the update to everyone who installed the plugin.
 
 ## License
 
