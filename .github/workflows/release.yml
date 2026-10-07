@@ -4,6 +4,13 @@ on:
     push:
         tags:
             - '*'
+    # Also from GitHub: Actions → Release Obsidian plugin → Run workflow.
+    # The draft release gets its tag when it is published.
+    workflow_dispatch:
+        inputs:
+            version:
+                description: 'Version to release, as in manifest.json (e.g. 1.0.0)'
+                required: true
 
 jobs:
     build:
@@ -20,6 +27,20 @@ jobs:
               with:
                   node-version: 24
                   cache: 'npm'
+
+            - name: Check the version
+              id: version
+              env:
+                  EVENT: ${{ github.event_name }}
+                  INPUT_VERSION: ${{ inputs.version }}
+              run: |
+                  if [ "$EVENT" = "workflow_dispatch" ]; then tag="$INPUT_VERSION"; else tag="${GITHUB_REF#refs/tags/}"; fi
+                  manifest=$(node -p "require('./manifest.json').version")
+                  if [ "$tag" != "$manifest" ]; then
+                    echo "::error::Version $tag does not match manifest.json ($manifest)"
+                    exit 1
+                  fi
+                  echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
             - name: Build plugin
               run: |
@@ -43,10 +64,10 @@ jobs:
             - name: Create release
               env:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+                  TAG: ${{ steps.version.outputs.tag }}
               run: |
-                  tag="${GITHUB_REF#refs/tags/}"
-
-                  gh release create "$tag" \
-                    --title="$tag" \
+                  gh release create "$TAG" \
+                    --title="$TAG" \
                     --draft \
+                    --target "$GITHUB_SHA" \
                     main.js manifest.json ${{ steps.styles.outputs.exists == 'true' && 'styles.css' || '' }}

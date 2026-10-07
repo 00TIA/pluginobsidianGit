@@ -201,6 +201,8 @@ npm version patch        # or minor / major: updates manifest.json, versions.jso
 git push --follow-tags   # the Release workflow builds the plugin and creates a draft release
 ```
 
+Without pushing a tag, the same draft can be created from GitHub: **Actions → Release Obsidian plugin → Run workflow**, with the version written in `manifest.json`.
+
 Then open the draft on the GitHub **Releases** page and publish it: Obsidian offers the update to everyone who installed the plugin.
 
 ## License
