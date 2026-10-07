@@ -1,0 +1,9 @@
+{
+	"id": "vault-git-sync",
+	"name": "Vault Git Sync",
+	"version": "1.0.0",
+	"minAppVersion": "1.4.4",
+	"description": "Commit, pull, push and sync your vault with git. Shows modified files in the status bar and supports automatic backups.",
+	"author": "00TIA",
+	"isDesktopOnly": true
+}

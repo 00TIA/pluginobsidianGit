@@ -1,0 +1,21 @@
+/* Vault Git Sync */
+
+.vault-git-notice-line + .vault-git-notice-line {
+	margin-top: var(--size-4-1);
+}
+
+.vault-git-notice-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--size-4-2);
+	margin-top: var(--size-4-2);
+}
+
+.vault-git-status-warning {
+	color: var(--text-warning);
+}
+
+.vault-git-commit-input {
+	width: 100%;
+	min-width: 280px;
+}
