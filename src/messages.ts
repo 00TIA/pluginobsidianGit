@@ -3,7 +3,7 @@ import type { CommitOutcome, LargeFile, PullOutcome, PushOutcome } from './git/g
 
 /** User-facing texts. No Obsidian imports, so they can be unit-tested. */
 
-export const SETTINGS_PATH = 'Settings → Vault Git Sync';
+export const SETTINGS_PATH = 'Settings → Mercurio Git Sync';
 
 export const AUTH_HELP =
 	'This plugin never asks for credentials: use an SSH key loaded in ssh-agent or a credential helper with saved credentials (Git Credential Manager, osxkeychain, libsecret…), then check with a pull or push from a terminal.';

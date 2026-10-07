@@ -196,7 +196,7 @@ describe('production bundle', () => {
 				setActiveLeaf: (leaf: FakeLeaf) => (leaf.active = true),
 			},
 		};
-		plugin = new PluginClass(app, { id: 'mercurio-git-sync', version: '1.0.1' });
+		plugin = new PluginClass(app, { id: 'mercurio-git-sync', version: '1.0.2' });
 		await plugin.onload();
 	});
 

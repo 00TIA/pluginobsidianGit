@@ -1,4 +1,4 @@
-# Vault Git Sync
+# Mercurio Git Sync
 
 An Obsidian **desktop** plugin (Windows, macOS, Linux) that keeps your vault under Git, built on [simple-git](https://github.com/steveukx/git-js).
 
@@ -19,7 +19,7 @@ The plugin is desktop-only (`isDesktopOnly: true`).
 
 ## Installation
 
-- **From Obsidian** (once the plugin is listed): **Settings → Community plugins → Browse**, search for *Vault Git Sync*, then **Install** and **Enable**.
+- **From Obsidian** (once the plugin is listed): **Settings → Community plugins → Browse**, search for *Mercurio Git Sync*, then **Install** and **Enable**.
 - **Before it is listed**, with the [BRAT](https://github.com/TfTHacker/obsidian42-brat) plugin: **Add beta plugin** → `00TIA/pluginobsidianGit`.
 - **Manually**: download `main.js`, `manifest.json` and `styles.css` from the latest [release](https://github.com/00TIA/pluginobsidianGit/releases) into `<vault>/.obsidian/plugins/mercurio-git-sync/`, restart Obsidian and enable the plugin in **Settings → Community plugins**.
 
@@ -39,7 +39,7 @@ The settings tab starts with the same steps as a checklist that ticks itself as 
 1. If the vault is not a Git repository, the plugin shows a notice with an **Initialize repository** button (also available as a command). It runs `git init` (branch `main` unless you configured `init.defaultBranch`) and creates:
    - a `.gitignore` for Obsidian (workspace layout files, `.trash/`, OS files);
    - a `.gitattributes` with `* text=auto eol=lf`: Obsidian writes LF line endings on every OS, so notes keep LF in the repository and in the vault, also on Windows with `core.autocrlf=true`.
-2. In **Settings → Vault Git Sync → Repository**, set the **Remote URL** (copy the SSH or HTTPS address from GitHub/GitLab/…) and, if Git does not know you yet, the **Commit author**.
+2. In **Settings → Mercurio Git Sync → Repository**, set the **Remote URL** (copy the SSH or HTTPS address from GitHub/GitLab/…) and, if Git does not know you yet, the **Commit author**.
 3. Run **Sync**. The first push sets the upstream branch.
 
 ## Git panel
