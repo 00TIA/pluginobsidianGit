@@ -29,7 +29,7 @@ Copy `main.js`, `manifest.json` and `styles.css` to `<vault>/.obsidian/plugins/v
 
 1. If the vault is not a Git repository, the plugin shows a notice with an **Initialize repository** button (also available as a command). It runs `git init` (branch `main` unless you configured `init.defaultBranch`) and creates:
    - a `.gitignore` for Obsidian (workspace layout files, `.trash/`, OS files);
-   - a `.gitattributes` with `* text=auto`, so line endings stay consistent when the vault is used on both Windows and macOS/Linux.
+   - a `.gitattributes` with `* text=auto eol=lf`: Obsidian writes LF line endings on every OS, so notes keep LF in the repository and in the vault, also on Windows with `core.autocrlf=true`.
 2. In **Settings → Vault Git Sync → Repository**, set the **Remote URL** (copy the SSH or HTTPS address from GitHub/GitLab/…) and, if Git does not know you yet, the **Commit author**.
 3. Run **Sync**. The first push sets the upstream branch.
 

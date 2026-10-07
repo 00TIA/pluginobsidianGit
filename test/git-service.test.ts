@@ -76,7 +76,7 @@ describe('repository detection and init', () => {
 		const gitignore = read(vault, '.gitignore');
 		assert.match(gitignore, /^\.config-dir\/workspace\.json$/m);
 		assert.match(gitignore, /^\.trash\/$/m);
-		assert.match(read(vault, '.gitattributes'), /^\* text=auto$/m);
+		assert.match(read(vault, '.gitattributes'), /^\* text=auto eol=lf$/m);
 		assert.equal((await service.status()).branch, 'main');
 	});
 
@@ -330,6 +330,8 @@ describe('conflicts', () => {
 	it('aborts the merge left by a conflicting pull, keeping the local commit', async () => {
 		const f = fixture();
 		const { vault, service } = await publishedVault(f);
+		// Git for Windows' default: the .gitattributes created by init keeps LF anyway
+		git(vault, f.env, 'config', 'core.autocrlf', 'true');
 		const other = f.clone('other');
 		write(other, 'note.md', 'remote version\n');
 		git(other, f.env, 'commit', '-am', 'other');

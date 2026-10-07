@@ -141,10 +141,13 @@ export function defaultGitignore(configDir: string): string {
 	].join('\n');
 }
 
-/** .gitattributes created by `init`: same line endings in the repository whatever the OS. */
+/**
+ * .gitattributes created by `init`. Obsidian writes LF on every OS, so text files keep LF
+ * both in the repository and in the vault, even with core.autocrlf=true on Windows.
+ */
 export const DEFAULT_GITATTRIBUTES = [
-	'# Store text files with LF line endings, check them out with the native ones',
-	'* text=auto',
+	'# Obsidian writes LF line endings on every OS: keep them in the repository and in the vault',
+	'* text=auto eol=lf',
 	'',
 ].join('\n');
 
