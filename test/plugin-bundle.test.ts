@@ -149,8 +149,9 @@ describe('production bundle', () => {
 		setViewState(state: { type: string }): Promise<void>;
 	}
 	const rightLeaf: FakeLeaf = {
-		async setViewState(state) {
+		setViewState(state) {
 			this.viewState = state;
+			return Promise.resolve();
 		},
 	};
 	const originalEnv = { ...process.env };
@@ -196,7 +197,7 @@ describe('production bundle', () => {
 				setActiveLeaf: (leaf: FakeLeaf) => (leaf.active = true),
 			},
 		};
-		plugin = new PluginClass(app, { id: 'mercurio-git-sync', version: '1.0.2' });
+		plugin = new PluginClass(app, { id: 'mercurio-git-sync', version: '1.0.3' });
 		await plugin.onload();
 	});
 
