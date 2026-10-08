@@ -148,6 +148,9 @@ Keep in mind:
 - No telemetry, no analytics, no third-party services.
 - The plugin never reads, asks for or stores credentials: Git uses your SSH keys or your credential helper.
 - It reads and writes the files of the vault and the repository's own Git configuration (`git config --local`, for the remote URL and the commit author). To find the Git executable it checks the common install locations and, on macOS and Linux, asks your login shell where `git` is.
+- The plugin page in the community directory lists **Direct filesystem access** and **Shell execution**. Both come from working with the Git installed on your computer, which the Obsidian API cannot do:
+  - the only programs it starts are `git`, `xcode-select -p` on macOS (to check that Apple's developer tools, which provide `/usr/bin/git`, are installed) and, when Git is not found otherwise, your login shell with `command -v git`;
+  - it uses the file system to look for the Git executable in the common install locations, to check file sizes, conflict markers and an unfinished merge in the repository, and to create `.gitignore` and `.gitattributes` when it initializes a repository.
 
 ## Other details
 
@@ -171,6 +174,8 @@ npm run build   # typecheck + production build (main.js)
 npm run lint    # ESLint with eslint-plugin-obsidianmd
 npm test        # unit and integration tests with real Git
 ```
+
+`@types/node` is listed under `dependencies` rather than `devDependencies`: the community directory review type-checks the code without installing `devDependencies`, and without the Node.js types every use of `fs`, `path` or `os` is reported as unsafe. It contains only type declarations, so nothing from it ends up in `main.js`. `npm run lint` also runs the type-aware rules that review reports.
 
 Layout:
 

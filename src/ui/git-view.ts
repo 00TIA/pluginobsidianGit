@@ -61,9 +61,10 @@ export class GitPanelView extends ItemView {
 		await this.controller.refreshStatus();
 	}
 
-	async onClose(): Promise<void> {
+	onClose(): Promise<void> {
 		this.unsubscribe?.();
 		this.unsubscribe = null;
+		return Promise.resolve();
 	}
 
 	private render(): void {

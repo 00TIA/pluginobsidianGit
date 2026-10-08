@@ -1,5 +1,6 @@
 import obsidianmd from 'eslint-plugin-obsidianmd';
 import globals from 'globals';
+import tseslint from 'typescript-eslint';
 import { globalIgnores, defineConfig } from 'eslint/config';
 
 export default defineConfig(
@@ -29,6 +30,11 @@ export default defineConfig(
 		},
 	},
 	...obsidianmd.configs.recommended,
+	{
+		// Type-aware rules also run by the Obsidian community directory review.
+		files: ['**/*.ts'],
+		extends: [tseslint.configs.recommendedTypeChecked],
+	},
 	{
 		// Tests run in plain Node, not in an Obsidian window.
 		files: ['test/**/*.ts'],
